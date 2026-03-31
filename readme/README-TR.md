@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 Projeyi desteklemek isterseniz, buradan destek olabilirsiniz!\
@@ -40,11 +40,11 @@ Projeyi desteklemek isterseniz, buradan destek olabilirsiniz!\
 # Genel Bakış
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix, açık kaynaklı, sonsuza kadar ücretsiz, kendi sunucunuzda barındırabileceğiniz hepsi bir arada sunucu yönetim platformudur. Sunucularınızı ve altyapınızı tek bir sezgisel arayüz üzerinden yönetmek için çok platformlu bir çözüm sunar. Termix, SSH terminal erişimi, SSH tünelleme yetenekleri, uzak dosya yönetimi ve daha birçok araç sağlar. Termix, tüm platformlarda kullanılabilen Termius'un mükemmel ücretsiz ve kendi barındırmalı alternatifidir.
+T-800, açık kaynaklı, sonsuza kadar ücretsiz, kendi sunucunuzda barındırabileceğiniz hepsi bir arada sunucu yönetim platformudur. Sunucularınızı ve altyapınızı tek bir sezgisel arayüz üzerinden yönetmek için çok platformlu bir çözüm sunar. T-800, SSH terminal erişimi, SSH tünelleme yetenekleri, uzak dosya yönetimi ve daha birçok araç sağlar. T-800, tüm platformlarda kullanılabilen Termius'un mükemmel ücretsiz ve kendi barındırmalı alternatifidir.
 
 # Özellikler
 
@@ -58,11 +58,11 @@ Termix, açık kaynaklı, sonsuza kadar ücretsiz, kendi sunucunuzda barındıra
 - **Kontrol Paneli** - Kontrol panelinizde sunucu bilgilerini bir bakışta görüntüleyin
 - **RBAC** - Roller oluşturun ve ana bilgisayarları kullanıcılar/roller arasında paylaşın
 - **Kullanıcı Kimlik Doğrulama** - Yönetici kontrolleri, OIDC ve 2FA (TOTP) desteğiyle güvenli kullanıcı yönetimi. Tüm platformlardaki aktif kullanıcı oturumlarını görüntüleyin ve izinleri iptal edin. OIDC/Yerel hesaplarınızı birbirine bağlayın.
-- **Veritabanı Şifreleme** - Arka uç, şifrelenmiş SQLite veritabanı dosyaları olarak depolanır. Daha fazla bilgi için [belgelere](https://docs.termix.site/security) bakın.
+- **Veritabanı Şifreleme** - Arka uç, şifrelenmiş SQLite veritabanı dosyaları olarak depolanır. Daha fazla bilgi için [belgelere](https://t-800.i.sgc.ai/security) bakın.
 - **Veri Dışa/İçe Aktarma** - SSH ana bilgisayarlarını, kimlik bilgilerini ve dosya yöneticisi verilerini dışa ve içe aktarın
 - **Otomatik SSL Kurulumu** - HTTPS yönlendirmeleriyle yerleşik SSL sertifika oluşturma ve yönetimi
 - **Modern Arayüz** - React, Tailwind CSS ve Shadcn ile oluşturulmuş temiz masaüstü/mobil uyumlu arayüz. Karanlık veya açık tema arasında seçim yapın. Herhangi bir bağlantıyı tam ekranda açmak için URL yollarını kullanın.
-- **Diller** - ~30 dil için yerleşik destek ([Crowdin](https://docs.termix.site/translations) tarafından yönetilir)
+- **Diller** - ~30 dil için yerleşik destek ([Crowdin](https://t-800.i.sgc.ai/translations) tarafından yönetilir)
 - **Platform Desteği** - Web uygulaması, masaüstü uygulaması (Windows, Linux ve macOS), PWA ve iOS ile Android için özel mobil/tablet uygulaması olarak kullanılabilir.
 - **SSH Araçları** - Tek tıklamayla çalıştırılan yeniden kullanılabilir komut parçacıkları oluşturun. Birden fazla açık terminalde aynı anda tek bir komut çalıştırın.
 - **Komut Geçmişi** - Daha önce çalıştırılan SSH komutlarını otomatik tamamlayın ve görüntüleyin
@@ -74,7 +74,7 @@ Termix, açık kaynaklı, sonsuza kadar ücretsiz, kendi sunucunuzda barındıra
 
 # Planlanan Özellikler
 
-Tüm planlanan özellikler için [Projeler](https://github.com/orgs/Termix-SSH/projects/2) sayfasına bakın. Katkıda bulunmak istiyorsanız, [Katkıda Bulunma](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md) sayfasına bakın.
+Tüm planlanan özellikler için [Projeler](https://github.com/orgs/P3X-118/projects/2) sayfasına bakın. Katkıda bulunmak istiyorsanız, [Katkıda Bulunma](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md) sayfasına bakın.
 
 # Kurulum
 
@@ -102,24 +102,24 @@ Desteklenen Cihazlar:
   - Google Play Store
   - APK
 
-Termix'i tüm platformlara nasıl kuracağınız hakkında daha fazla bilgi için Termix [Belgelerine](https://docs.termix.site/install) bakın. Aksi takdirde, örnek bir Docker Compose dosyasını burada görüntüleyin:
+T-800'i tüm platformlara nasıl kuracağınız hakkında daha fazla bilgi için T-800 [Belgelerine](https://t-800.i.sgc.ai/install) bakın. Aksi takdirde, örnek bir Docker Compose dosyasını burada görüntüleyin:
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -128,14 +128,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -161,41 +161,41 @@ networks:
 
 # Destek
 
-Termix ile ilgili yardıma ihtiyacınız varsa veya bir özellik talep etmek istiyorsanız, [Sorunlar](https://github.com/Termix-SSH/Support/issues) sayfasını ziyaret edin, giriş yapın ve `New Issue` butonuna basın.
+T-800 ile ilgili yardıma ihtiyacınız varsa veya bir özellik talep etmek istiyorsanız, [Sorunlar](https://github.com/P3X-118/T-800/issues) sayfasını ziyaret edin, giriş yapın ve `New Issue` butonuna basın.
 Lütfen sorununuzu mümkün olduğunca ayrıntılı yazın, tercihen İngilizce olarak. Ayrıca [Discord](https://discord.gg/jVQGdvHDrf) sunucusuna katılabilir ve destek kanalını ziyaret edebilirsiniz, ancak yanıt süreleri daha uzun olabilir.
 
 # Ekran Görüntüleri
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 Bazı videolar ve görseller güncel olmayabilir veya özellikleri tam olarak yansıtmayabilir.

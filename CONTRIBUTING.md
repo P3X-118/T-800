@@ -10,7 +10,7 @@
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/Termix-SSH/Termix
+   git clone https://github.com/P3X-118/T-800
    ```
 2. Install the dependencies:
    ```sh
@@ -26,12 +26,12 @@ npm run dev
 npm run dev:backend
 ```
 
-This will start the backend and the frontend Vite server. You can access Termix by going to `http://localhost:5174/`.
+This will start the backend and the frontend Vite server. You can access T-800 by going to `http://localhost:5174/`.
 
 ## Contributing
 
 1. **Fork the repository**: Click the "Fork" button at the top right of
-   the [repository page](https://github.com/Termix-SSH/Termix).
+   the [repository page](https://github.com/P3X-118/T-800).
 2. **Create a new branch**:
    ```sh
    git checkout -b feature/my-new-feature
@@ -101,6 +101,6 @@ This will start the backend and the frontend Vite server. You can access Termix 
 
 ## Support
 
-If you need help or want to request a feature with Termix, visit the [Issues](https://github.com/Termix-SSH/Support/issues) page, log in, and press `New Issue`.
+If you need help or want to request a feature with T-800, visit the [Issues](https://github.com/P3X-118/T-800/issues) page, log in, and press `New Issue`.
 Please be as detailed as possible in your issue, preferably written in English. You can also join the [Discord](https://discord.gg/jVQGdvHDrf) server and visit the support
 channel, however, response times may be longer.

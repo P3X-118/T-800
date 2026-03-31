@@ -177,17 +177,17 @@ export function CommandPalette({
   };
 
   const handleOpenUpdateLog = () => {
-    window.open("https://github.com/Termix-SSH/Termix/releases", "_blank");
+    window.open("https://github.com/P3X-118/T-800/releases", "_blank");
     setIsOpen(false);
   };
 
   const handleGitHub = () => {
-    window.open("https://github.com/Termix-SSH/Termix", "_blank");
+    window.open("https://github.com/P3X-118/T-800", "_blank");
     setIsOpen(false);
   };
 
   const handleSupport = () => {
-    window.open("https://github.com/Termix-SSH/Support/issues/new", "_blank");
+    window.open("https://github.com/P3X-118/T-800/issues/new", "_blank");
     setIsOpen(false);
   };
 
@@ -197,7 +197,7 @@ export function CommandPalette({
   };
 
   const handleDonate = () => {
-    window.open("https://github.com/sponsors/LukeGus", "_blank");
+    window.open("https://github.com/sponsors/P3X-118", "_blank");
     setIsOpen(false);
   };
 

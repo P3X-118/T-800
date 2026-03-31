@@ -2870,7 +2870,7 @@ router.post("/totp/setup", authenticateJWT, async (req, res) => {
     }
 
     const secret = speakeasy.generateSecret({
-      name: `Termix (${userRecord.username})`,
+      name: `T-800 (${userRecord.username})`,
       length: 32,
     });
 

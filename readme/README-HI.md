@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 यदि आप चाहें, तो आप यहाँ प्रोजेक्ट को सपोर्ट कर सकते हैं!\
@@ -40,11 +40,11 @@
 # अवलोकन
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix एक ओपन-सोर्स, हमेशा के लिए मुफ़्त, सेल्फ-होस्टेड ऑल-इन-वन सर्वर प्रबंधन प्लेटफ़ॉर्म है। यह एक एकल, सहज इंटरफ़ेस के माध्यम से आपके सर्वर और बुनियादी ढाँचे के प्रबंधन के लिए एक मल्टी-प्लेटफ़ॉर्म समाधान प्रदान करता है। Termix SSH टर्मिनल एक्सेस, SSH टनलिंग क्षमताएँ, रिमोट फ़ाइल प्रबंधन, और कई अन्य उपकरण प्रदान करता है। Termix सभी प्लेटफ़ॉर्म पर उपलब्ध Termius का सही मुफ़्त और सेल्फ-होस्टेड विकल्प है।
+T-800 एक ओपन-सोर्स, हमेशा के लिए मुफ़्त, सेल्फ-होस्टेड ऑल-इन-वन सर्वर प्रबंधन प्लेटफ़ॉर्म है। यह एक एकल, सहज इंटरफ़ेस के माध्यम से आपके सर्वर और बुनियादी ढाँचे के प्रबंधन के लिए एक मल्टी-प्लेटफ़ॉर्म समाधान प्रदान करता है। T-800 SSH टर्मिनल एक्सेस, SSH टनलिंग क्षमताएँ, रिमोट फ़ाइल प्रबंधन, और कई अन्य उपकरण प्रदान करता है। T-800 सभी प्लेटफ़ॉर्म पर उपलब्ध Termius का सही मुफ़्त और सेल्फ-होस्टेड विकल्प है।
 
 # विशेषताएँ
 
@@ -58,11 +58,11 @@ Termix एक ओपन-सोर्स, हमेशा के लिए मु
 - **डैशबोर्ड** - अपने डैशबोर्ड पर एक नज़र में सर्वर की जानकारी देखें
 - **RBAC** - भूमिकाएँ बनाएँ और उपयोगकर्ताओं/भूमिकाओं में होस्ट साझा करें
 - **उपयोगकर्ता प्रमाणीकरण** - व्यवस्थापक नियंत्रण और OIDC और 2FA (TOTP) सपोर्ट के साथ सुरक्षित उपयोगकर्ता प्रबंधन। सभी प्लेटफ़ॉर्म पर सक्रिय उपयोगकर्ता सत्र देखें और अनुमतियाँ रद्द करें। अपने OIDC/स्थानीय खातों को एक साथ जोड़ें
-- **डेटाबेस एन्क्रिप्शन** - बैकएंड एन्क्रिप्टेड SQLite डेटाबेस फ़ाइलों के रूप में संग्रहीत। अधिक जानकारी के लिए [डॉक्स](https://docs.termix.site/security) देखें
+- **डेटाबेस एन्क्रिप्शन** - बैकएंड एन्क्रिप्टेड SQLite डेटाबेस फ़ाइलों के रूप में संग्रहीत। अधिक जानकारी के लिए [डॉक्स](https://t-800.i.sgc.ai/security) देखें
 - **डेटा एक्सपोर्ट/इम्पोर्ट** - SSH होस्ट, क्रेडेंशियल और फ़ाइल मैनेजर डेटा एक्सपोर्ट और इम्पोर्ट करें
 - **स्वचालित SSL सेटअप** - HTTPS रीडायरेक्ट के साथ बिल्ट-इन SSL सर्टिफ़िकेट जनरेशन और प्रबंधन
 - **आधुनिक UI** - React, Tailwind CSS, और Shadcn से बना साफ़ डेस्कटॉप/मोबाइल-फ़्रेंडली इंटरफ़ेस। डार्क या लाइट मोड UI के बीच चुनें। किसी भी कनेक्शन को फ़ुल-स्क्रीन में खोलने के लिए URL रूट का उपयोग करें
-- **भाषाएँ** - लगभग 30 भाषाओं का बिल्ट-इन सपोर्ट ([Crowdin](https://docs.termix.site/translations) द्वारा प्रबंधित)
+- **भाषाएँ** - लगभग 30 भाषाओं का बिल्ट-इन सपोर्ट ([Crowdin](https://t-800.i.sgc.ai/translations) द्वारा प्रबंधित)
 - **प्लेटफ़ॉर्म सपोर्ट** - वेब ऐप, डेस्कटॉप एप्लिकेशन (Windows, Linux, और macOS), PWA, और iOS और Android के लिए समर्पित मोबाइल/टैबलेट ऐप के रूप में उपलब्ध
 - **SSH टूल्स** - एक क्लिक से निष्पादित होने वाले पुन: उपयोग योग्य कमांड स्निपेट बनाएँ। एक साथ कई खुले टर्मिनलों में एक कमांड चलाएँ
 - **कमांड इतिहास** - पहले चलाए गए SSH कमांड का ऑटो-कम्प्लीट और दृश्य
@@ -74,7 +74,7 @@ Termix एक ओपन-सोर्स, हमेशा के लिए मु
 
 # नियोजित विशेषताएँ
 
-सभी नियोजित विशेषताओं के लिए [प्रोजेक्ट्स](https://github.com/orgs/Termix-SSH/projects/2) देखें। यदि आप योगदान देना चाहते हैं, तो [योगदान](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md) देखें।
+सभी नियोजित विशेषताओं के लिए [प्रोजेक्ट्स](https://github.com/orgs/P3X-118/projects/2) देखें। यदि आप योगदान देना चाहते हैं, तो [योगदान](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md) देखें।
 
 # इंस्टॉलेशन
 
@@ -102,24 +102,24 @@ Termix एक ओपन-सोर्स, हमेशा के लिए मु
   - Google Play Store
   - APK
 
-सभी प्लेटफ़ॉर्म पर Termix इंस्टॉल करने के बारे में अधिक जानकारी के लिए Termix [डॉक्स](https://docs.termix.site/install) पर जाएँ। अन्यथा, यहाँ एक नमूना Docker Compose फ़ाइल देखें:
+सभी प्लेटफ़ॉर्म पर T-800 इंस्टॉल करने के बारे में अधिक जानकारी के लिए T-800 [डॉक्स](https://t-800.i.sgc.ai/install) पर जाएँ। अन्यथा, यहाँ एक नमूना Docker Compose फ़ाइल देखें:
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -128,14 +128,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -161,41 +161,41 @@ networks:
 
 # सहायता
 
-यदि आपको सहायता चाहिए या Termix के लिए किसी विशेषता का अनुरोध करना चाहते हैं, तो [इश्यूज़](https://github.com/Termix-SSH/Support/issues) पेज पर जाएँ, लॉग इन करें, और `New Issue` दबाएँ।
+यदि आपको सहायता चाहिए या T-800 के लिए किसी विशेषता का अनुरोध करना चाहते हैं, तो [इश्यूज़](https://github.com/P3X-118/T-800/issues) पेज पर जाएँ, लॉग इन करें, और `New Issue` दबाएँ।
 कृपया अपने इश्यू में यथासंभव विस्तृत विवरण दें, अधिमानतः अंग्रेज़ी में लिखें। आप [Discord](https://discord.gg/jVQGdvHDrf) सर्वर में भी शामिल हो सकते हैं और सहायता चैनल पर जा सकते हैं, हालाँकि, प्रतिक्रिया समय अधिक हो सकता है।
 
 # स्क्रीनशॉट
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 कुछ वीडियो और छवियाँ पुरानी हो सकती हैं या विशेषताओं को पूरी तरह से प्रदर्शित नहीं कर सकती हैं।

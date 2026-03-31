@@ -122,14 +122,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         window.matchMedia("(prefers-color-scheme: dark)").matches);
 
     let themeColors;
-    if (config.theme === "termix") {
+    if (config.theme === "t800") {
       themeColors = isDarkMode
-        ? TERMINAL_THEMES.termixDark.colors
-        : TERMINAL_THEMES.termixLight.colors;
+        ? TERMINAL_THEMES.t800Dark.colors
+        : TERMINAL_THEMES.t800Light.colors;
     } else {
       themeColors =
         TERMINAL_THEMES[config.theme]?.colors ||
-        TERMINAL_THEMES.termixDark.colors;
+        TERMINAL_THEMES.t800Dark.colors;
     }
     const backgroundColor = themeColors.background;
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -578,7 +578,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             webSocketRef.current.send(JSON.stringify({ type: "disconnect" }));
           }
           const tabId = hostConfig.id ?? "default";
-          localStorage.removeItem(`termix_session_${tabId}`);
+          localStorage.removeItem(`t800_session_${tabId}`);
           sessionIdRef.current = null;
           webSocketRef.current?.close();
           setIsConnected(false);
@@ -826,7 +826,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           ? `${hostConfig.id}_${hostConfig.instanceId}`
           : `${hostConfig.id}_${Date.now()}`;
         const savedSessionId = persistenceEnabled
-          ? localStorage.getItem(`termix_session_${tabId}`)
+          ? localStorage.getItem(`t800_session_${tabId}`)
           : null;
         if (savedSessionId && !isReconnectingRef.current) {
           sessionIdRef.current = savedSessionId;
@@ -1282,7 +1282,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
               "true";
             if (persistenceEnabled && hostConfig.instanceId) {
               const tabId = `${hostConfig.id}_${hostConfig.instanceId}`;
-              localStorage.setItem(`termix_session_${tabId}`, msg.sessionId);
+              localStorage.setItem(`t800_session_${tabId}`, msg.sessionId);
             }
           } else if (msg.type === "sessionAttached") {
             isAttachingSessionRef.current = false;
@@ -1316,7 +1316,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             shouldNotReconnectRef.current = false;
             if (hostConfig.instanceId) {
               const tabId = `${hostConfig.id}_${hostConfig.instanceId}`;
-              localStorage.removeItem(`termix_session_${tabId}`);
+              localStorage.removeItem(`t800_session_${tabId}`);
             }
             sessionIdRef.current = null;
 
@@ -1326,7 +1326,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           } else if (msg.type === "sessionTakenOver") {
             if (sessionIdRef.current && hostConfig.instanceId) {
               const tabId = `${hostConfig.id}_${hostConfig.instanceId}`;
-              localStorage.removeItem(`termix_session_${tabId}`);
+              localStorage.removeItem(`t800_session_${tabId}`);
               sessionIdRef.current = null;
             }
 
@@ -1590,14 +1590,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       };
 
       let themeColors;
-      if (config.theme === "termix") {
+      if (config.theme === "t800") {
         themeColors = isDarkMode
-          ? TERMINAL_THEMES.termixDark.colors
-          : TERMINAL_THEMES.termixLight.colors;
+          ? TERMINAL_THEMES.t800Dark.colors
+          : TERMINAL_THEMES.t800Light.colors;
       } else {
         themeColors =
           TERMINAL_THEMES[config.theme]?.colors ||
-          TERMINAL_THEMES.termixDark.colors;
+          TERMINAL_THEMES.t800Dark.colors;
       }
 
       const fontConfig = TERMINAL_FONTS.find(
@@ -1774,7 +1774,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             currentInstanceId
           ) {
             const tabId = `${currentHostId}_${currentInstanceId}`;
-            localStorage.removeItem(`termix_session_${tabId}`);
+            localStorage.removeItem(`t800_session_${tabId}`);
           }
 
           if (webSocketRef.current) {

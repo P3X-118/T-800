@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 如果你愿意，可以在这里支持这个项目！\
@@ -40,12 +40,12 @@
 # 概览
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix 是一个开源、永久免费、自托管的一体化服务器管理平台。它提供了一个多平台解决方案，通过一个直观的界面管理你的服务器和基础设施。Termix
-提供 SSH 终端访问、远程桌面控制（RDP、VNC、Telnet）、SSH 隧道功能以及远程文件管理，还会陆续添加更多工具。Termix 是适用于所有平台的完美免费自托管 Termius 替代品。
+T-800 是一个开源、永久免费、自托管的一体化服务器管理平台。它提供了一个多平台解决方案，通过一个直观的界面管理你的服务器和基础设施。T-800
+提供 SSH 终端访问、远程桌面控制（RDP、VNC、Telnet）、SSH 隧道功能以及远程文件管理，还会陆续添加更多工具。T-800 是适用于所有平台的完美免费自托管 Termius 替代品。
 
 # 功能
 
@@ -59,11 +59,11 @@ Termix 是一个开源、永久免费、自托管的一体化服务器管理平�
 - **仪表板** - 在仪表板上一目了然地查看服务器信息
 - **RBAC** - 创建角色并在用户/角色之间共享主机
 - **用户认证** - 安全的用户管理，具有管理员控制以及 OIDC 和 2FA (TOTP) 支持。查看所有平台上的活动用户会话并撤销权限。将您的 OIDC/本地帐户链接在一起
-- **数据库加密** - 后端存储为加密的 SQLite 数据库文件。查看[文档](https://docs.termix.site/security)了解更多信息
+- **数据库加密** - 后端存储为加密的 SQLite 数据库文件。查看[文档](https://t-800.i.sgc.ai/security)了解更多信息
 - **数据导出/导入** - 导出和导入 SSH 主机、凭据和文件管理器数据
 - **自动 SSL 设置** - 内置 SSL 证书生成和管理，支持 HTTPS 重定向
 - **现代用户界面** - 使用 React、Tailwind CSS 和 Shadcn 构建的简洁的桌面/移动设备友好界面。可选择基于深色或浅色模式的用户界面。使用 URL 路由以全屏方式打开任何连接
-- **语言** - 内置支持约 30 种语言（由 [Crowdin](https://docs.termix.site/translations) 管理）
+- **语言** - 内置支持约 30 种语言（由 [Crowdin](https://t-800.i.sgc.ai/translations) 管理）
 - **平台支持** - 可作为 Web 应用程序、桌面应用程序（Windows、Linux 和 macOS）、PWA 以及适用于 iOS 和 Android 的专用移动/平板电脑应用程序
 - **SSH 工具** - 创建可重用的命令片段，单击即可执行。在多个打开的终端上同时运行一个命令
 - **命令历史** - 自动完成并查看以前运行的 SSH 命令
@@ -75,7 +75,7 @@ Termix 是一个开源、永久免费、自托管的一体化服务器管理平�
 
 # 计划功能
 
-查看 [项目](https://github.com/orgs/Termix-SSH/projects/2) 了解所有计划功能。如果你想贡献代码，请参阅 [贡献指南](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md)。
+查看 [项目](https://github.com/orgs/P3X-118/projects/2) 了解所有计划功能。如果你想贡献代码，请参阅 [贡献指南](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md)。
 
 # 安装
 
@@ -103,24 +103,24 @@ Termix 是一个开源、永久免费、自托管的一体化服务器管理平�
   - Google Play 商店
   - APK
 
-访问 Termix [文档](https://docs.termix.site/install) 了解有关如何在所有平台上安装 Termix 的更多信息。或者，在此处查看示例 Docker Compose 文件（如果不打算使用远程桌面功能，可以省略 guacd 和 network）：
+访问 T-800 [文档](https://t-800.i.sgc.ai/install) 了解有关如何在所有平台上安装 T-800 的更多信息。或者，在此处查看示例 Docker Compose 文件（如果不打算使用远程桌面功能，可以省略 guacd 和 network）：
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -129,14 +129,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -162,42 +162,42 @@ networks:
 
 # 支持
 
-如果你需要 Termix 的帮助或想要请求功能，请访问 [Issues](https://github.com/Termix-SSH/Support/issues) 页面，登录并点击 `New Issue`。
+如果你需要 T-800 的帮助或想要请求功能，请访问 [Issues](https://github.com/P3X-118/T-800/issues) 页面，登录并点击 `New Issue`。
 请尽可能详细地描述你的问题，最好使用英语。你也可以加入 [Discord](https://discord.gg/jVQGdvHDrf) 服务器并访问支持
 频道，但响应时间可能较长。
 
 # 展示
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 某些视频和图像可能已过时或可能无法完美展示功能。

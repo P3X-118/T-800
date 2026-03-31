@@ -40,7 +40,7 @@ export function useDragToSystemDesktop({ sshSessionId }: UseDragToSystemProps) {
     try {
       if ("indexedDB" in window && fileHandle.getParent) {
         const dirHandle = await fileHandle.getParent();
-        const request = indexedDB.open("termix-dirs", 1);
+        const request = indexedDB.open("t800-dirs", 1);
         request.onsuccess = () => {
           const db = request.result;
           const transaction = db.transaction(["directories"], "readwrite");

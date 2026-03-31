@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 Nếu bạn muốn, bạn có thể hỗ trợ dự án tại đây!\
@@ -40,11 +40,11 @@ Nếu bạn muốn, bạn có thể hỗ trợ dự án tại đây!\
 # Tổng Quan
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix là nền tảng quản lý máy chủ tất cả trong một, mã nguồn mở, miễn phí vĩnh viễn, tự lưu trữ. Nó cung cấp giải pháp đa nền tảng để quản lý máy chủ và cơ sở hạ tầng của bạn thông qua một giao diện trực quan duy nhất. Termix cung cấp quyền truy cập terminal SSH, khả năng tạo đường hầm SSH, quản lý tệp từ xa và nhiều công cụ khác. Termix là giải pháp thay thế miễn phí và tự lưu trữ hoàn hảo cho Termius, khả dụng trên tất cả các nền tảng.
+T-800 là nền tảng quản lý máy chủ tất cả trong một, mã nguồn mở, miễn phí vĩnh viễn, tự lưu trữ. Nó cung cấp giải pháp đa nền tảng để quản lý máy chủ và cơ sở hạ tầng của bạn thông qua một giao diện trực quan duy nhất. T-800 cung cấp quyền truy cập terminal SSH, khả năng tạo đường hầm SSH, quản lý tệp từ xa và nhiều công cụ khác. T-800 là giải pháp thay thế miễn phí và tự lưu trữ hoàn hảo cho Termius, khả dụng trên tất cả các nền tảng.
 
 # Tính Năng
 
@@ -58,11 +58,11 @@ Termix là nền tảng quản lý máy chủ tất cả trong một, mã nguồ
 - **Bảng Điều Khiển** - Xem thông tin máy chủ trong nháy mắt trên bảng điều khiển của bạn
 - **RBAC** - Tạo vai trò và chia sẻ máy chủ giữa người dùng/vai trò
 - **Xác Thực Người Dùng** - Quản lý người dùng an toàn với quyền quản trị và hỗ trợ OIDC và 2FA (TOTP). Xem phiên hoạt động của người dùng trên tất cả các nền tảng và thu hồi quyền. Liên kết tài khoản OIDC/Nội bộ của bạn với nhau.
-- **Mã Hóa Cơ Sở Dữ Liệu** - Backend được lưu trữ dưới dạng tệp cơ sở dữ liệu SQLite được mã hóa. Xem [tài liệu](https://docs.termix.site/security) để biết thêm.
+- **Mã Hóa Cơ Sở Dữ Liệu** - Backend được lưu trữ dưới dạng tệp cơ sở dữ liệu SQLite được mã hóa. Xem [tài liệu](https://t-800.i.sgc.ai/security) để biết thêm.
 - **Xuất/Nhập Dữ Liệu** - Xuất và nhập máy chủ SSH, thông tin xác thực và dữ liệu trình quản lý tệp
 - **Thiết Lập SSL Tự Động** - Tạo và quản lý chứng chỉ SSL tích hợp với chuyển hướng HTTPS
 - **Giao Diện Hiện Đại** - Giao diện sạch sẽ, thân thiện với máy tính/di động được xây dựng bằng React, Tailwind CSS và Shadcn. Chọn giữa giao diện chế độ tối hoặc sáng. Sử dụng đường dẫn URL để mở bất kỳ kết nối nào ở chế độ toàn màn hình.
-- **Ngôn Ngữ** - Hỗ trợ tích hợp ~30 ngôn ngữ (được quản lý bởi [Crowdin](https://docs.termix.site/translations))
+- **Ngôn Ngữ** - Hỗ trợ tích hợp ~30 ngôn ngữ (được quản lý bởi [Crowdin](https://t-800.i.sgc.ai/translations))
 - **Hỗ Trợ Nền Tảng** - Khả dụng dưới dạng ứng dụng web, ứng dụng máy tính (Windows, Linux và macOS), PWA và ứng dụng di động/máy tính bảng chuyên dụng cho iOS và Android.
 - **Công Cụ SSH** - Tạo đoạn lệnh có thể tái sử dụng, thực thi chỉ với một cú nhấp chuột. Chạy một lệnh đồng thời trên nhiều terminal đang mở.
 - **Lịch Sử Lệnh** - Tự động hoàn thành và xem các lệnh SSH đã chạy trước đó
@@ -74,7 +74,7 @@ Termix là nền tảng quản lý máy chủ tất cả trong một, mã nguồ
 
 # Tính Năng Dự Kiến
 
-Xem [Dự Án](https://github.com/orgs/Termix-SSH/projects/2) để biết tất cả các tính năng dự kiến. Nếu bạn muốn đóng góp, xem [Đóng Góp](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md).
+Xem [Dự Án](https://github.com/orgs/P3X-118/projects/2) để biết tất cả các tính năng dự kiến. Nếu bạn muốn đóng góp, xem [Đóng Góp](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md).
 
 # Cài Đặt
 
@@ -102,24 +102,24 @@ Thiết Bị Được Hỗ Trợ:
   - Google Play Store
   - APK
 
-Truy cập [Tài Liệu](https://docs.termix.site/install) Termix để biết thêm thông tin về cách cài đặt Termix trên tất cả các nền tảng. Ngoài ra, xem tệp Docker Compose mẫu tại đây:
+Truy cập [Tài Liệu](https://t-800.i.sgc.ai/install) T-800 để biết thêm thông tin về cách cài đặt T-800 trên tất cả các nền tảng. Ngoài ra, xem tệp Docker Compose mẫu tại đây:
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -128,14 +128,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -161,41 +161,41 @@ networks:
 
 # Hỗ Trợ
 
-Nếu bạn cần trợ giúp hoặc muốn yêu cầu tính năng với Termix, hãy truy cập trang [Vấn Đề](https://github.com/Termix-SSH/Support/issues), đăng nhập và nhấn `New Issue`.
+Nếu bạn cần trợ giúp hoặc muốn yêu cầu tính năng với T-800, hãy truy cập trang [Vấn Đề](https://github.com/P3X-118/T-800/issues), đăng nhập và nhấn `New Issue`.
 Vui lòng mô tả vấn đề càng chi tiết càng tốt, ưu tiên viết bằng tiếng Anh. Bạn cũng có thể tham gia máy chủ [Discord](https://discord.gg/jVQGdvHDrf) và truy cập kênh hỗ trợ, tuy nhiên thời gian phản hồi có thể lâu hơn.
 
 # Ảnh Chụp Màn Hình
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 Một số video và hình ảnh có thể đã lỗi thời hoặc không thể hiện chính xác hoàn toàn các tính năng.

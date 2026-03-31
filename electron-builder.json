@@ -1,6 +1,6 @@
 {
-  "appId": "com.karmaa.termix",
-  "productName": "Termix",
+  "appId": "ai.sgc.t800",
+  "productName": "T-800",
   "publish": null,
   "directories": {
     "output": "release"
@@ -46,22 +46,22 @@
       }
     ],
     "icon": "public/icon.ico",
-    "executableName": "Termix"
+    "executableName": "T-800"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
-    "artifactName": "termix_windows_${arch}_nsis.${ext}",
+    "artifactName": "t800_windows_${arch}_nsis.${ext}",
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Termix",
-    "uninstallDisplayName": "Termix"
+    "shortcutName": "T-800",
+    "uninstallDisplayName": "T-800"
   },
   "msi": {
-    "artifactName": "termix_windows_${arch}_msi.${ext}"
+    "artifactName": "t800_windows_${arch}_msi.${ext}"
   },
   "linux": {
-    "artifactName": "termix_linux_${arch}_portable.${ext}",
+    "artifactName": "t800_linux_${arch}_portable.${ext}",
     "target": [
       {
         "target": "AppImage",
@@ -78,22 +78,22 @@
     ],
     "icon": "public/icon.png",
     "category": "Development",
-    "executableName": "termix",
-    "maintainer": "Termix <mail@termix.site>",
+    "executableName": "t800",
+    "maintainer": "T-800 <admin@sgc.ai>",
     "desktop": {
       "entry": {
-        "Name": "Termix",
+        "Name": "T-800",
         "Comment": "A web-based server management platform",
         "Keywords": "terminal;ssh;server;management;",
-        "StartupWMClass": "termix"
+        "StartupWMClass": "t800"
       }
     }
   },
   "appImage": {
-    "artifactName": "termix_linux_${arch}_appimage.${ext}"
+    "artifactName": "t800_linux_${arch}_appimage.${ext}"
   },
   "deb": {
-    "artifactName": "termix_linux_${arch}_deb.${ext}"
+    "artifactName": "t800_linux_${arch}_deb.${ext}"
   },
 
   "mac": {
@@ -120,12 +120,12 @@
     "x64ArchFiles": "**/*.node"
   },
   "dmg": {
-    "artifactName": "termix_macos_${arch}_dmg.${ext}",
+    "artifactName": "t800_macos_${arch}_dmg.${ext}",
     "sign": true
   },
   "afterSign": "build/notarize.cjs",
   "mas": {
-    "provisioningProfile": "build/Termix_Mac_App_Store.provisionprofile",
+    "provisioningProfile": "build/T800_Mac_App_Store.provisionprofile",
     "entitlements": "build/entitlements.mas.plist",
     "entitlementsInherit": "build/entitlements.mas.inherit.plist",
     "hardenedRuntime": false,
@@ -133,10 +133,10 @@
     "asar": false,
     "type": "distribution",
     "category": "public.app-category.developer-tools",
-    "artifactName": "termix_macos_${arch}_mas.${ext}",
+    "artifactName": "t800_macos_${arch}_mas.${ext}",
     "extendInfo": {
       "ITSAppUsesNonExemptEncryption": false,
-      "NSAppleEventsUsageDescription": "Termix needs access to control other applications for terminal operations."
+      "NSAppleEventsUsageDescription": "T-800 needs access to control other applications for terminal operations."
     }
   },
   "generateUpdatesFilesForAllChannels": true

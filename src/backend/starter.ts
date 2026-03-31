@@ -26,7 +26,7 @@ import { systemLogger, versionLogger } from "./utils/logger.js";
       // expected - env file may not exist
     }
 
-    systemLogger.info("Termix backend initialization started", {
+    systemLogger.info("T-800 backend initialization started", {
       operation: "backend_init_start",
       nodeEnv: process.env.NODE_ENV || "production",
       port: process.env.PORT || 4090,
@@ -86,7 +86,7 @@ import { systemLogger, versionLogger } from "./utils/logger.js";
         continue;
       }
     }
-    versionLogger.info(`Termix Backend starting - Version: ${version}`, {
+    versionLogger.info(`T-800 Backend starting - Version: ${version}`, {
       operation: "startup",
       version: version,
     });
@@ -169,7 +169,7 @@ import { systemLogger, versionLogger } from "./utils/logger.js";
       }
     }
 
-    systemLogger.success("Termix backend started successfully", {
+    systemLogger.success("T-800 backend started successfully", {
       operation: "backend_init_complete",
       port: process.env.PORT || 4090,
       ssl: process.env.SSL_ENABLED === "true",

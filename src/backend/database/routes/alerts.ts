@@ -1,7 +1,7 @@
 import type {
   AuthenticatedRequest,
   CacheEntry,
-  TermixAlert,
+  T800Alert,
 } from "../../../types/index.js";
 import express from "express";
 import { db } from "../db/index.js";
@@ -43,13 +43,13 @@ class AlertCache {
 const alertCache = new AlertCache();
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
-const REPO_OWNER = "Termix-SSH";
+const REPO_OWNER = "P3X-118";
 const REPO_NAME = "Docs";
-const ALERTS_FILE = "main/termix-alerts.json";
+const ALERTS_FILE = "main/t800-alerts.json";
 
-async function fetchAlertsFromGitHub(): Promise<TermixAlert[]> {
-  const cacheKey = "termix_alerts";
-  const cachedData = alertCache.get<TermixAlert[]>(cacheKey);
+async function fetchAlertsFromGitHub(): Promise<T800Alert[]> {
+  const cacheKey = "t800_alerts";
+  const cachedData = alertCache.get<T800Alert[]>(cacheKey);
   if (cachedData) {
     return cachedData;
   }
@@ -59,7 +59,7 @@ async function fetchAlertsFromGitHub(): Promise<TermixAlert[]> {
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "TermixAlertChecker/1.0",
+        "User-Agent": "T800AlertChecker/1.0",
       },
       agent: getProxyAgent(url),
     });
@@ -75,7 +75,7 @@ async function fetchAlertsFromGitHub(): Promise<TermixAlert[]> {
       );
     }
 
-    const alerts: TermixAlert[] = (await response.json()) as TermixAlert[];
+    const alerts: T800Alert[] = (await response.json()) as T800Alert[];
 
     const now = new Date();
 
@@ -136,7 +136,7 @@ router.get("/", authenticateJWT, async (req, res) => {
 
     res.json({
       alerts: activeAlertsForUser,
-      cached: alertCache.get("termix_alerts") !== null,
+      cached: alertCache.get("t800_alerts") !== null,
       total_count: activeAlertsForUser.length,
     });
   } catch (error) {

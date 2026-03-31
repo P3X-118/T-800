@@ -19,7 +19,7 @@ exports.default = async function notarizing(context) {
 
   try {
     await notarize({
-      appBundleId: 'com.karmaa.termix',
+      appBundleId: 'ai.sgc.t800',
       appPath: `${appOutDir}/${appName}.app`,
       appleId: appleId,
       appleIdPassword: appleIdPassword,

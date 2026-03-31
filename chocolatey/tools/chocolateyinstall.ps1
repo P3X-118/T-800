@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$packageName = 'termix-ssh'
+$packageName = 't800-ssh'
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $url64 = 'DOWNLOAD_URL_PLACEHOLDER'
 $checksum64 = 'CHECKSUM_PLACEHOLDER'
@@ -10,7 +10,7 @@ $packageArgs = @{
   packageName    = $packageName
   fileType       = 'msi'
   url64bit       = $url64
-  softwareName   = 'Termix*'
+  softwareName   = 'T-800*'
   checksum64     = $checksum64
   checksumType64 = $checksumType64
   silentArgs     = "/qn /norestart /l*v `"$($env:TEMP)\$($packageName).$($env:chocolateyPackageVersion).MsiInstall.log`""

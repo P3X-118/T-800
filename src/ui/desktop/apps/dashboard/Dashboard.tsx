@@ -619,7 +619,7 @@ export function Dashboard({
                   variant="outline"
                   onClick={() =>
                     window.open(
-                      "https://github.com/Termix-SSH/Termix",
+                      "https://github.com/P3X-118/T-800",
                       "_blank",
                     )
                   }
@@ -631,7 +631,7 @@ export function Dashboard({
                   variant="outline"
                   onClick={() =>
                     window.open(
-                      "https://github.com/Termix-SSH/Support/issues/new",
+                      "https://github.com/P3X-118/T-800/issues/new",
                       "_blank",
                     )
                   }
@@ -654,7 +654,7 @@ export function Dashboard({
                   className="font-semibold shrink-0 !bg-canvas"
                   variant="outline"
                   onClick={() =>
-                    window.open("https://github.com/sponsors/LukeGus", "_blank")
+                    window.open("https://github.com/sponsors/P3X-118", "_blank")
                   }
                 >
                   {t("dashboard.donate")}

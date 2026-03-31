@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.karmaa.termix</id>
-  <name>Termix</name>
+  <id>ai.sgc.t800</id>
+  <name>T-800</name>
   <summary>Web-based server management platform with SSH terminal, tunneling, and file editing</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
 
-  <developer_name>bugattiguy527</developer_name>
+  <developer_name>SGC</developer_name>
 
   <description>
     <p>
-      Termix is an open-source, forever-free, self-hosted all-in-one server management platform.
+      T-800 is an open-source, forever-free, self-hosted all-in-one server management platform.
       It provides a web-based solution for managing your servers and infrastructure through a single, intuitive interface.
     </p>
     <p>Features:</p>
@@ -25,19 +25,19 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">com.karmaa.termix.desktop</launchable>
+  <launchable type="desktop-id">ai.sgc.t800.desktop</launchable>
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/Termix-SSH/Termix/main/public/screenshots/terminal.png</image>
+      <image>https://raw.githubusercontent.com/P3X-118/T-800/main/public/screenshots/terminal.png</image>
       <caption>SSH Terminal Interface</caption>
     </screenshot>
   </screenshots>
 
-  <url type="homepage">https://github.com/Termix-SSH/Termix</url>
-  <url type="bugtracker">https://github.com/Termix-SSH/Support/issues</url>
-  <url type="help">https://docs.termix.site</url>
-  <url type="vcs-browser">https://github.com/Termix-SSH/Termix</url>
+  <url type="homepage">https://github.com/P3X-118/T-800</url>
+  <url type="bugtracker">https://github.com/P3X-118/T-800/issues</url>
+  <url type="help">https://t-800.i.sgc.ai</url>
+  <url type="vcs-browser">https://github.com/P3X-118/T-800</url>
 
   <content_rating type="oars-1.1">
     <content_attribute id="social-info">moderate</content_attribute>
@@ -46,9 +46,9 @@
   <releases>
     <release version="VERSION_PLACEHOLDER" date="DATE_PLACEHOLDER">
       <description>
-        <p>Latest release of Termix</p>
+        <p>Latest release of T-800</p>
       </description>
-      <url>https://github.com/Termix-SSH/Termix/releases</url>
+      <url>https://github.com/P3X-118/T-800/releases</url>
     </release>
   </releases>
 
@@ -68,7 +68,7 @@
   </keywords>
 
   <provides>
-    <binary>termix</binary>
+    <binary>t800</binary>
   </provides>
 
   <requires>

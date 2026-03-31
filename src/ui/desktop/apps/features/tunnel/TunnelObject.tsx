@@ -242,7 +242,7 @@ export function TunnelObject({
                                   </a>{" "}
                                   {t("tunnels.orCreate")}{" "}
                                   <a
-                                    href="https://github.com/Termix-SSH/Termix/issues/new"
+                                    href="https://github.com/P3X-118/T-800/issues/new"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="underline text-blue-600 dark:text-blue-400"
@@ -477,7 +477,7 @@ export function TunnelObject({
                                   </a>{" "}
                                   {t("tunnels.orCreate")}{" "}
                                   <a
-                                    href="https://github.com/Termix-SSH/Termix/issues/new"
+                                    href="https://github.com/P3X-118/T-800/issues/new"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="underline text-blue-600 dark:text-blue-400"

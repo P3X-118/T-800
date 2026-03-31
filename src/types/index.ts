@@ -385,7 +385,7 @@ export interface HostInfo {
 // ALERT TYPES
 // ============================================================================
 
-export interface TermixAlert {
+export interface T800Alert {
   id: string;
   title: string;
   message: string;
@@ -597,12 +597,12 @@ export interface FileManagerProps {
 }
 
 export interface AlertCardProps {
-  alert: TermixAlert;
+  alert: T800Alert;
   onDismiss: (alertId: string) => void;
 }
 
 export interface AlertManagerProps {
-  alerts: TermixAlert[];
+  alerts: T800Alert[];
   onDismiss: (alertId: string) => void;
   loggedIn: boolean;
 }

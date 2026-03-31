@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 إذا كنت ترغب في ذلك، يمكنك دعم المشروع هنا!\
@@ -40,11 +40,11 @@
 # نظرة عامة
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix هي منصة مفتوحة المصدر ومجانية للأبد وذاتية الاستضافة لإدارة الخوادم بشكل شامل. توفر حلاً متعدد المنصات لإدارة خوادمك وبنيتك التحتية من خلال واجهة واحدة وسهلة الاستخدام. يوفر Termix الوصول إلى طرفية SSH، وقدرات إنشاء أنفاق SSH، وإدارة الملفات عن بُعد، والعديد من الأدوات الأخرى. يُعد Termix البديل المثالي المجاني وذاتي الاستضافة لـ Termius المتاح لجميع المنصات.
+T-800 هي منصة مفتوحة المصدر ومجانية للأبد وذاتية الاستضافة لإدارة الخوادم بشكل شامل. توفر حلاً متعدد المنصات لإدارة خوادمك وبنيتك التحتية من خلال واجهة واحدة وسهلة الاستخدام. يوفر T-800 الوصول إلى طرفية SSH، وقدرات إنشاء أنفاق SSH، وإدارة الملفات عن بُعد، والعديد من الأدوات الأخرى. يُعد T-800 البديل المثالي المجاني وذاتي الاستضافة لـ Termius المتاح لجميع المنصات.
 
 # الميزات
 
@@ -58,11 +58,11 @@ Termix هي منصة مفتوحة المصدر ومجانية للأبد وذا�
 - **لوحة التحكم** - عرض معلومات الخادم بنظرة واحدة على لوحة التحكم
 - **RBAC** - إنشاء الأدوار ومشاركة المضيفات عبر المستخدمين/الأدوار
 - **مصادقة المستخدمين** - إدارة آمنة للمستخدمين مع ضوابط إدارية ودعم OIDC و 2FA (TOTP). عرض جلسات المستخدمين النشطة عبر جميع المنصات وإلغاء الصلاحيات. ربط حسابات OIDC/المحلية معاً
-- **تشفير قاعدة البيانات** - يُخزَّن الخادم الخلفي كملفات قاعدة بيانات SQLite مشفرة. اطلع على [الوثائق](https://docs.termix.site/security) لمزيد من المعلومات
+- **تشفير قاعدة البيانات** - يُخزَّن الخادم الخلفي كملفات قاعدة بيانات SQLite مشفرة. اطلع على [الوثائق](https://t-800.i.sgc.ai/security) لمزيد من المعلومات
 - **تصدير/استيراد البيانات** - تصدير واستيراد مضيفات SSH وبيانات الاعتماد وبيانات مدير الملفات
 - **إعداد SSL تلقائي** - إنشاء وإدارة شهادات SSL مدمجة مع إعادة التوجيه إلى HTTPS
 - **واجهة مستخدم حديثة** - واجهة نظيفة متوافقة مع سطح المكتب والهاتف المحمول مبنية بـ React و Tailwind CSS و Shadcn. الاختيار بين الوضع الداكن أو الفاتح. استخدام مسارات URL لفتح أي اتصال في وضع ملء الشاشة
-- **اللغات** - دعم مدمج لحوالي 30 لغة (تُدار بواسطة [Crowdin](https://docs.termix.site/translations))
+- **اللغات** - دعم مدمج لحوالي 30 لغة (تُدار بواسطة [Crowdin](https://t-800.i.sgc.ai/translations))
 - **دعم المنصات** - متاح كتطبيق ويب، وتطبيق سطح مكتب (Windows و Linux و macOS)، و PWA، وتطبيق مخصص للهاتف المحمول/الجهاز اللوحي لـ iOS و Android
 - **أدوات SSH** - إنشاء مقتطفات أوامر قابلة لإعادة الاستخدام تُنفَّذ بنقرة واحدة. تشغيل أمر واحد في وقت واحد عبر عدة طرفيات مفتوحة
 - **سجل الأوامر** - الإكمال التلقائي وعرض أوامر SSH التي تم تنفيذها سابقاً
@@ -74,7 +74,7 @@ Termix هي منصة مفتوحة المصدر ومجانية للأبد وذا�
 
 # الميزات المخططة
 
-راجع [المشاريع](https://github.com/orgs/Termix-SSH/projects/2) لعرض جميع الميزات المخططة. إذا كنت تتطلع للمساهمة، راجع [المساهمة](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md).
+راجع [المشاريع](https://github.com/orgs/P3X-118/projects/2) لعرض جميع الميزات المخططة. إذا كنت تتطلع للمساهمة، راجع [المساهمة](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md).
 
 # التثبيت
 
@@ -102,24 +102,24 @@ Termix هي منصة مفتوحة المصدر ومجانية للأبد وذا�
   - Google Play Store
   - APK
 
-قم بزيارة [وثائق](https://docs.termix.site/install) Termix للحصول على مزيد من المعلومات حول كيفية تثبيت Termix على جميع المنصات. بخلاف ذلك، يمكنك الاطلاع على نموذج ملف Docker Compose هنا:
+قم بزيارة [وثائق](https://t-800.i.sgc.ai/install) T-800 للحصول على مزيد من المعلومات حول كيفية تثبيت T-800 على جميع المنصات. بخلاف ذلك، يمكنك الاطلاع على نموذج ملف Docker Compose هنا:
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -128,14 +128,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -161,41 +161,41 @@ networks:
 
 # الدعم
 
-إذا كنت بحاجة إلى مساعدة أو ترغب في طلب ميزة لـ Termix، قم بزيارة صفحة [المشكلات](https://github.com/Termix-SSH/Support/issues)، وسجل الدخول، واضغط على `New Issue`.
+إذا كنت بحاجة إلى مساعدة أو ترغب في طلب ميزة لـ T-800، قم بزيارة صفحة [المشكلات](https://github.com/P3X-118/T-800/issues)، وسجل الدخول، واضغط على `New Issue`.
 يرجى أن تكون مفصلاً قدر الإمكان في مشكلتك، ويُفضَّل كتابتها باللغة الإنجليزية. يمكنك أيضاً الانضمام إلى خادم [Discord](https://discord.gg/jVQGdvHDrf) وزيارة قناة الدعم، ومع ذلك قد تكون أوقات الاستجابة أطول.
 
 # لقطات الشاشة
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 قد تكون بعض مقاطع الفيديو والصور قديمة أو قد لا تعرض الميزات بشكل مثالي.

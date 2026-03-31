@@ -321,7 +321,7 @@ class SystemCrypto {
       try {
         envContent = await fs.readFile(envPath, "utf8");
       } catch {
-        envContent = "# Termix Auto-generated Configuration\n\n";
+        envContent = "# T-800 Auto-generated Configuration\n\n";
       }
 
       const keyRegex = new RegExp(`^${key}=.*$`, "m");

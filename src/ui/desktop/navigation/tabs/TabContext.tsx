@@ -50,13 +50,13 @@ interface TabProviderProps {
   children: ReactNode;
 }
 
-export function clearTermixSessionStorage() {
-  localStorage.removeItem("termix_tabs");
-  localStorage.removeItem("termix_currentTab");
+export function clearT800SessionStorage() {
+  localStorage.removeItem("t800_tabs");
+  localStorage.removeItem("t800_currentTab");
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key?.startsWith("termix_session_")) {
+    if (key?.startsWith("t800_session_")) {
       keysToRemove.push(key);
     }
   }
@@ -78,7 +78,7 @@ export function TabProvider({ children }: TabProviderProps) {
     }
 
     try {
-      const saved = localStorage.getItem("termix_tabs");
+      const saved = localStorage.getItem("t800_tabs");
       if (saved) {
         const parsed = JSON.parse(saved) as Tab[];
         const restored: Tab[] = [{ id: 1, type: "home", title: "Home" }];
@@ -111,7 +111,7 @@ export function TabProvider({ children }: TabProviderProps) {
   });
   const [currentTab, setCurrentTab] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem("termix_currentTab");
+      const saved = localStorage.getItem("t800_currentTab");
       if (saved) {
         const parsed = parseInt(saved, 10);
         if (parsed && tabs.some((t) => t.id === parsed)) return parsed;
@@ -143,11 +143,11 @@ export function TabProvider({ children }: TabProviderProps) {
       const serializable = tabs
         .filter((t) => t.type !== "home")
         .map(({ terminalRef, ...rest }) => rest);
-      localStorage.setItem("termix_tabs", JSON.stringify(serializable));
-      localStorage.setItem("termix_currentTab", String(currentTab));
+      localStorage.setItem("t800_tabs", JSON.stringify(serializable));
+      localStorage.setItem("t800_currentTab", String(currentTab));
     } else {
-      localStorage.removeItem("termix_tabs");
-      localStorage.removeItem("termix_currentTab");
+      localStorage.removeItem("t800_tabs");
+      localStorage.removeItem("t800_currentTab");
     }
   }, [tabs, currentTab]);
 

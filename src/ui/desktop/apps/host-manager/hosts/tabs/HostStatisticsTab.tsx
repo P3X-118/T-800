@@ -39,7 +39,7 @@ export function HostStatisticsTab({
             size="sm"
             className="h-8 px-3 text-xs"
             onClick={() =>
-              window.open("https://docs.termix.site/server-stats", "_blank")
+              window.open("https://t-800.i.sgc.ai/server-stats", "_blank")
             }
           >
             {t("common.documentation")}

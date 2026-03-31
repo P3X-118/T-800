@@ -142,7 +142,7 @@ export function TOTPSetup({
 
   const downloadBackupCodes = () => {
     const content =
-      `Termix Two-Factor Authentication Backup Codes\n` +
+      `T-800 Two-Factor Authentication Backup Codes\n` +
       `Generated: ${new Date().toISOString()}\n\n` +
       `Keep these codes in a safe place. Each code can only be used once.\n\n` +
       backupCodes.map((code, i) => `${i + 1}. ${code}`).join("\n");
@@ -151,7 +151,7 @@ export function TOTPSetup({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "termix-backup-codes.txt";
+    a.download = "t800-backup-codes.txt";
     a.click();
     URL.revokeObjectURL(url);
     toast.success(t("auth.backupCodesDownloaded"));
@@ -444,7 +444,7 @@ export function TOTPSetup({
             size="sm"
             className="h-8 px-3 text-xs"
             onClick={() =>
-              window.open("https://docs.termix.site/totp", "_blank")
+              window.open("https://t-800.i.sgc.ai/totp", "_blank")
             }
           >
             {t("common.documentation")}

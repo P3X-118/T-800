@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>t800-ssh</id>
+    <version>VERSION_PLACEHOLDER</version>
+    <packageSourceUrl>https://github.com/P3X-118/T-800</packageSourceUrl>
+    <owners>SGC</owners>
+    <title>T-800 SSH</title>
+    <authors>SGC</authors>
+    <projectUrl>https://github.com/P3X-118/T-800</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/P3X-118/T-800/main/public/icon.png</iconUrl>
+    <licenseUrl>https://raw.githubusercontent.com/P3X-118/T-800/refs/heads/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/P3X-118/T-800</projectSourceUrl>
+    <docsUrl>https://t-800.i.sgc.ai/install</docsUrl>
+    <bugTrackerUrl>https://github.com/P3X-118/T-800/issues</bugTrackerUrl>
+    <tags>docker ssh self-hosted file-management ssh-tunnel t800 server-management terminal</tags>
+    <summary>T-800 is a web-based server management platform with SSH terminal, tunneling, and file editing capabilities.</summary>
+    <description>
+T-800 is an open-source, forever-free, self-hosted all-in-one server management platform. It provides a web-based solution for managing your servers and infrastructure through a single, intuitive interface.
+
+T-800 offers:
+- SSH terminal access
+- SSH tunneling capabilities
+- Remote file management
+- Server monitoring and management
+
+This package installs the desktop application version of T-800.
+    </description>
+    <releaseNotes>https://github.com/P3X-118/T-800/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

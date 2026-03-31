@@ -1068,7 +1068,7 @@ export function HostManagerViewer({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  window.open("https://docs.termix.site/json-import", "_blank");
+                  window.open("https://t-800.i.sgc.ai/json-import", "_blank");
                 }}
               >
                 {t("hosts.formatGuide")}
@@ -1168,7 +1168,7 @@ export function HostManagerViewer({
               variant="outline"
               size="sm"
               onClick={() => {
-                window.open("https://docs.termix.site/json-import", "_blank");
+                window.open("https://t-800.i.sgc.ai/json-import", "_blank");
               }}
             >
               {t("hosts.formatGuide")}

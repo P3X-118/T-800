@@ -1,4 +1,4 @@
-app-id: com.karmaa.termix
+app-id: ai.sgc.t800
 runtime: org.freedesktop.Platform
 runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
@@ -23,13 +23,13 @@ finish-args:
   - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
 
 modules:
-  - name: termix
+  - name: t800
     buildsystem: simple
     build-commands:
-      - chmod +x termix.AppImage
-      - ./termix.AppImage --appimage-extract
+      - chmod +x t800.AppImage
+      - ./t800.AppImage --appimage-extract
 
-      - install -Dm755 squashfs-root/termix /app/bin/termix
+      - install -Dm755 squashfs-root/t800 /app/bin/t800
       - cp -r squashfs-root/resources /app/bin/
       - cp -r squashfs-root/locales /app/bin/ || true
 
@@ -43,42 +43,42 @@ modules:
         cat > run.sh << 'EOF'
         #!/bin/bash
         export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
-        exec zypak-wrapper /app/bin/termix "$@"
+        exec zypak-wrapper /app/bin/t800 "$@"
         EOF
       - chmod +x run.sh
       - install -Dm755 run.sh /app/bin/run.sh
 
-      - install -Dm644 com.karmaa.termix.desktop /app/share/applications/com.karmaa.termix.desktop
+      - install -Dm644 ai.sgc.t800.desktop /app/share/applications/ai.sgc.t800.desktop
 
-      - install -Dm644 com.karmaa.termix.metainfo.xml /app/share/metainfo/com.karmaa.termix.metainfo.xml
+      - install -Dm644 ai.sgc.t800.metainfo.xml /app/share/metainfo/ai.sgc.t800.metainfo.xml
 
-      - install -Dm644 com.karmaa.termix.svg /app/share/icons/hicolor/scalable/apps/com.karmaa.termix.svg
-      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/com.karmaa.termix.png || true
-      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/com.karmaa.termix.png || true
+      - install -Dm644 ai.sgc.t800.svg /app/share/icons/hicolor/scalable/apps/ai.sgc.t800.svg
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/ai.sgc.t800.png || true
+      - install -Dm644 icon-128.png /app/share/icons/hicolor/128x128/apps/ai.sgc.t800.png || true
 
     sources:
       - type: file
-        url: https://github.com/Termix-SSH/Termix/releases/download/release-VERSION_PLACEHOLDER-tag/termix_linux_x64_appimage.AppImage
+        url: https://github.com/P3X-118/T-800/releases/download/release-VERSION_PLACEHOLDER-tag/t800_linux_x64_appimage.AppImage
         sha256: CHECKSUM_X64_PLACEHOLDER
-        dest-filename: termix.AppImage
+        dest-filename: t800.AppImage
         only-arches:
           - x86_64
 
       - type: file
-        url: https://github.com/Termix-SSH/Termix/releases/download/release-VERSION_PLACEHOLDER-tag/termix_linux_arm64_appimage.AppImage
+        url: https://github.com/P3X-118/T-800/releases/download/release-VERSION_PLACEHOLDER-tag/t800_linux_arm64_appimage.AppImage
         sha256: CHECKSUM_ARM64_PLACEHOLDER
-        dest-filename: termix.AppImage
+        dest-filename: t800.AppImage
         only-arches:
           - aarch64
 
       - type: file
-        path: com.karmaa.termix.desktop
+        path: ai.sgc.t800.desktop
 
       - type: file
-        path: com.karmaa.termix.metainfo.xml
+        path: ai.sgc.t800.metainfo.xml
 
       - type: file
-        path: com.karmaa.termix.svg
+        path: ai.sgc.t800.svg
 
       - type: file
         path: icon-256.png

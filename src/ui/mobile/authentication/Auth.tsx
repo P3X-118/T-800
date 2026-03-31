@@ -790,7 +790,7 @@ export function Auth({
             variant="outline"
             className="w-full h-11 text-base font-semibold"
             onClick={() =>
-              window.open("https://docs.termix.site/install", "_blank")
+              window.open("https://t-800.i.sgc.ai/install", "_blank")
             }
           >
             {t("mobile.viewMobileAppDocs")}
@@ -1219,7 +1219,7 @@ export function Auth({
                       className="w-full h-11 text-base font-semibold"
                       onClick={() =>
                         window.open(
-                          "https://docs.termix.site/install",
+                          "https://t-800.i.sgc.ai/install",
                           "_blank",
                         )
                       }

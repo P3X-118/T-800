@@ -362,14 +362,14 @@ export function AppView({
           };
 
           let themeColors;
-          if (terminalConfig.theme === "termix") {
+          if (terminalConfig.theme === "t800") {
             themeColors = isDarkMode
-              ? TERMINAL_THEMES.termixDark.colors
-              : TERMINAL_THEMES.termixLight.colors;
+              ? TERMINAL_THEMES.t800Dark.colors
+              : TERMINAL_THEMES.t800Light.colors;
           } else {
             themeColors =
               TERMINAL_THEMES[terminalConfig.theme]?.colors ||
-              TERMINAL_THEMES.termixDark.colors;
+              TERMINAL_THEMES.t800Dark.colors;
           }
           const backgroundColor = themeColors.background;
 
@@ -608,14 +608,14 @@ export function AppView({
     ...(currentTabData?.hostConfig as any)?.terminalConfig,
   };
   let containerThemeColors;
-  if (terminalConfig.theme === "termix") {
+  if (terminalConfig.theme === "t800") {
     containerThemeColors = isDarkMode
-      ? TERMINAL_THEMES.termixDark.colors
-      : TERMINAL_THEMES.termixLight.colors;
+      ? TERMINAL_THEMES.t800Dark.colors
+      : TERMINAL_THEMES.t800Light.colors;
   } else {
     containerThemeColors =
       TERMINAL_THEMES[terminalConfig.theme]?.colors ||
-      TERMINAL_THEMES.termixDark.colors;
+      TERMINAL_THEMES.t800Dark.colors;
   }
   const terminalBackgroundColor = containerThemeColors.background;
 

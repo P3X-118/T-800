@@ -1,6 +1,6 @@
 {
-  "name": "Termix",
-  "short_name": "Termix",
+  "name": "T-800",
+  "short_name": "T-800",
   "description": "A web-based server management platform with SSH terminal, tunneling, and file editing capabilities",
   "theme_color": "#09090b",
   "background_color": "#09090b",

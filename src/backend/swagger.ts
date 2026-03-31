@@ -13,9 +13,9 @@ const swaggerOptions: swaggerJSDoc.Options = {
   definition: {
     openapi: "3.0.3",
     info: {
-      title: "Termix API",
+      title: "T-800 API",
       version: "0.0.0",
-      description: "Termix Backend API Reference",
+      description: "T-800 Backend API Reference",
     },
     servers: [
       {

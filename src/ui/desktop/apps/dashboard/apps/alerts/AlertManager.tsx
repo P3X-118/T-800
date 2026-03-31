@@ -3,7 +3,7 @@ import { AlertCard } from "./AlertCard.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { getUserAlerts, dismissAlert } from "@/ui/main-axios.ts";
 import { useTranslation } from "react-i18next";
-import type { TermixAlert } from "../../../../../../types";
+import type { T800Alert } from "../../../../../../types";
 import { toast } from "sonner";
 
 interface AlertManagerProps {
@@ -16,7 +16,7 @@ export function AlertManager({
   loggedIn,
 }: AlertManagerProps): React.ReactElement {
   const { t } = useTranslation();
-  const [alerts, setAlerts] = useState<TermixAlert[]>([]);
+  const [alerts, setAlerts] = useState<T800Alert[]>([]);
   const [currentAlertIndex, setCurrentAlertIndex] = useState(0);
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function AlertManager({
       const response = await getUserAlerts();
       const userAlerts = response.alerts || [];
 
-      const sortedAlerts = userAlerts.sort((a: TermixAlert, b: TermixAlert) => {
+      const sortedAlerts = userAlerts.sort((a: T800Alert, b: T800Alert) => {
         const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
         const aPriority =
           priorityOrder[a.priority as keyof typeof priorityOrder] || 0;

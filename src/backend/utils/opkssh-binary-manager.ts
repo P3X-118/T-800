@@ -150,7 +150,7 @@ export class OPKSSHBinaryManager {
     const url = `https://api.github.com/repos/${OPKSSH_REPO}/releases/latest`;
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Termix",
+        "User-Agent": "T-800",
       },
     });
 

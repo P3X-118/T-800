@@ -28,8 +28,8 @@ export interface TerminalTheme {
 }
 
 export const TERMINAL_THEMES: Record<string, TerminalTheme> = {
-  termix: {
-    name: "Termix Default",
+  t800: {
+    name: "T-800 Default",
     category: "dark",
     colors: {
       background: "#18181b",
@@ -56,8 +56,8 @@ export const TERMINAL_THEMES: Record<string, TerminalTheme> = {
     },
   },
 
-  termixDark: {
-    name: "Termix Dark",
+  t800Dark: {
+    name: "T-800 Dark",
     category: "dark",
     colors: {
       background: "#18181b",
@@ -84,8 +84,8 @@ export const TERMINAL_THEMES: Record<string, TerminalTheme> = {
     },
   },
 
-  termixLight: {
-    name: "Termix Light",
+  t800Light: {
+    name: "T-800 Light",
     category: "light",
     colors: {
       background: "#ffffff",
@@ -746,7 +746,7 @@ export const DEFAULT_TERMINAL_CONFIG = {
   fontFamily: "Caskaydia Cove Nerd Font Mono",
   letterSpacing: 0,
   lineHeight: 1.0,
-  theme: "termix",
+  theme: "t800",
 
   scrollback: 10000,
   bellStyle: "none" as const,

@@ -284,7 +284,7 @@ export function HostSharingTab({
               size="sm"
               className="h-8 px-3 text-xs"
               onClick={() =>
-                window.open("https://docs.termix.site/rbac", "_blank")
+                window.open("https://t-800.i.sgc.ai/rbac", "_blank")
               }
             >
               {t("common.documentation")}

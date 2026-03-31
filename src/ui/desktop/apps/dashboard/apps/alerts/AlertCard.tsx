@@ -17,10 +17,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { TermixAlert } from "../../../../../../types";
+import type { T800Alert } from "../../../../../../types";
 
 interface AlertCardProps {
-  alert: TermixAlert;
+  alert: T800Alert;
   onDismiss: (alertId: string) => void;
   onClose: () => void;
 }

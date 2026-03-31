@@ -16,7 +16,7 @@ interface TerminalPreviewProps {
 }
 
 export function TerminalPreview({
-  theme = "termix",
+  theme = "t800",
   fontSize = 14,
   fontFamily = "Caskaydia Cove Nerd Font Mono",
   cursorStyle = "bar",
@@ -27,12 +27,12 @@ export function TerminalPreview({
   const { theme: appTheme } = useTheme();
 
   const resolvedTheme =
-    theme === "termix"
+    theme === "t800"
       ? appTheme === "dark" ||
         (appTheme === "system" &&
           window.matchMedia("(prefers-color-scheme: dark)").matches)
-        ? "termixDark"
-        : "termixLight"
+        ? "t800Dark"
+        : "t800Light"
       : theme;
 
   return (
@@ -56,7 +56,7 @@ export function TerminalPreview({
       >
         <div>
           <span style={{ color: TERMINAL_THEMES[resolvedTheme]?.colors.green }}>
-            user@termix
+            user@t800
           </span>
           <span>:</span>
           <span style={{ color: TERMINAL_THEMES[resolvedTheme]?.colors.blue }}>
@@ -89,7 +89,7 @@ export function TerminalPreview({
         </div>
         <div>
           <span style={{ color: TERMINAL_THEMES[resolvedTheme]?.colors.green }}>
-            user@termix
+            user@t800
           </span>
           <span>:</span>
           <span style={{ color: TERMINAL_THEMES[resolvedTheme]?.colors.blue }}>

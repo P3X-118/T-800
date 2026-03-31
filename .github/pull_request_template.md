@@ -28,5 +28,5 @@ _(Optional: add before/after screenshots, GIFs, or console output)_
 
 - [ ] Code follows project style guidelines
 - [ ] Supports mobile and desktop UI/app (if applicable)
-- [ ] I have read [Contributing.md](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md)
-- [ ] This is not a translation request. See [docs](https://docs.termix.site/translations)
+- [ ] I have read [Contributing.md](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md)
+- [ ] This is not a translation request. See [docs](https://t-800.i.sgc.ai/translations)

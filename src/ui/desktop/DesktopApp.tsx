@@ -517,7 +517,7 @@ function AppContent({
                       willChange: "color, text-shadow",
                     }}
                   >
-                    TERMIX
+                    T-800
                   </div>
                   <div
                     className="text-sm text-muted-foreground mt-3 tracking-widest"

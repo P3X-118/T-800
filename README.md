@@ -17,9 +17,9 @@
   <a href="readme/README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=./repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=./repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 If you would like, you can support the project here!\
@@ -40,13 +40,13 @@ If you would like, you can support the project here!\
 # Overview
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=./public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=./public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termix is an open-source, forever-free, self-hosted all-in-one server management platform. It provides a multi-platform
-solution for managing your servers and infrastructure through a single, intuitive interface. Termix offers SSH terminal
-access, remote desktop control (RDP, VNC, Telnet), SSH tunneling capabilities, remote SSH file management, and many other tools. Termix is the perfect
+T-800 is an open-source, forever-free, self-hosted all-in-one server management platform. It provides a multi-platform
+solution for managing your servers and infrastructure through a single, intuitive interface. T-800 offers SSH terminal
+access, remote desktop control (RDP, VNC, Telnet), SSH tunneling capabilities, remote SSH file management, and many other tools. T-800 is the perfect
 free and self-hosted alternative to Termius available for all platforms.
 
 # Features
@@ -61,12 +61,12 @@ free and self-hosted alternative to Termius available for all platforms.
 - **Dashboard** - View server information at a glance on your dashboard
 - **RBAC** - Create roles and share hosts across users/roles
 - **User Authentication** - Secure user management with admin controls and OIDC (with access control) and 2FA (TOTP) support. View active user sessions across all platforms and revoke permissions. Link your OIDC/Local accounts together.
-- **Database Encryption** - Backend stored as encrypted SQLite database files. View [docs](https://docs.termix.site/security) for more.
+- **Database Encryption** - Backend stored as encrypted SQLite database files. View [docs](https://t-800.i.sgc.ai/security) for more.
 - **Data Export/Import** - Export and import SSH hosts, credentials, and file manager data
 - **Automatic SSL Setup** - Built-in SSL certificate generation and management with HTTPS redirects
 - **Modern UI** - Clean desktop/mobile-friendly interface built with React, Tailwind CSS, and Shadcn. Choose between dark or light mode based UI. Use URL routes to open any connection in full-screen.
-- **Languages** - Built-in support ~30 languages (managed by [Crowdin](https://docs.termix.site/translations))
-- **Platform Support** - Available as a web app, desktop application (Windows, Linux, and macOS, can be run standalone without Termix backend), PWA, and dedicated mobile/tablet app for iOS and Android.
+- **Languages** - Built-in support ~30 languages (managed by [Crowdin](https://t-800.i.sgc.ai/translations))
+- **Platform Support** - Available as a web app, desktop application (Windows, Linux, and macOS, can be run standalone without T-800 backend), PWA, and dedicated mobile/tablet app for iOS and Android.
 - **SSH Tools** - Create reusable command snippets that execute with a single click. Run one command simultaneously across multiple open terminals.
 - **Command History** - Auto-complete and view previously ran SSH commands
 - **Quick Connect** - Connect to a server without having to save the connection data
@@ -77,7 +77,7 @@ free and self-hosted alternative to Termius available for all platforms.
 
 # Planned Features
 
-See [Projects](https://github.com/orgs/Termix-SSH/projects/2) for all planned features. If you are looking to contribute, see [Contributing](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md).
+See [Projects](https://github.com/orgs/P3X-118/projects/2) for all planned features. If you are looking to contribute, see [Contributing](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md).
 
 # Installation
 
@@ -105,25 +105,25 @@ Supported Devices:
   - Google Play Store
   - APK
 
-Visit the Termix [Docs](https://docs.termix.site/install) for more information on how to install Termix on all platforms. Otherwise, view
+Visit the T-800 [Docs](https://t-800.i.sgc.ai/install) for more information on how to install T-800 on all platforms. Otherwise, view
 a sample Docker Compose file here (you can omit guacd and the network if you don't plan on using remote desktop features):
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -132,14 +132,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -169,42 +169,42 @@ networks:
 
 # Support
 
-If you need help or want to request a feature with Termix, visit the [Issues](https://github.com/Termix-SSH/Support/issues) page, log in, and press `New Issue`.
+If you need help or want to request a feature with T-800, visit the [Issues](https://github.com/P3X-118/T-800/issues) page, log in, and press `New Issue`.
 Please be as detailed as possible in your issue, preferably written in English. You can also join the [Discord](https://discord.gg/jVQGdvHDrf) server and visit the support
 channel, however, response times may be longer.
 
 # Screenshots
 
-[![YouTube](./repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](./repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="./repo-images/Image 1.png" width="400" alt="Termix Demo 1"/>
-  <img src="./repo-images/Image 2.png" width="400" alt="Termix Demo 2"/>
+  <img src="./repo-images/Image 1.png" width="400" alt="T-800 Demo 1"/>
+  <img src="./repo-images/Image 2.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="./repo-images/Image 3.png" width="400" alt="Termix Demo 3"/>
-  <img src="./repo-images/Image 4.png" width="400" alt="Termix Demo 4"/>
+  <img src="./repo-images/Image 3.png" width="400" alt="T-800 Demo 3"/>
+  <img src="./repo-images/Image 4.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="./repo-images/Image 5.png" width="400" alt="Termix Demo 5"/>
-  <img src="./repo-images/Image 6.png" width="400" alt="Termix Demo 6"/>
+  <img src="./repo-images/Image 5.png" width="400" alt="T-800 Demo 5"/>
+  <img src="./repo-images/Image 6.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="./repo-images/Image 7.png" width="400" alt="Termix Demo 7"/>
-  <img src="./repo-images/Image 8.png" width="400" alt="Termix Demo 8"/>
+  <img src="./repo-images/Image 7.png" width="400" alt="T-800 Demo 7"/>
+  <img src="./repo-images/Image 8.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="./repo-images/Image 9.png" width="400" alt="Termix Demo 9"/>
-  <img src="./repo-images/Image 10.png" width="400" alt="Termix Demo 10"/>
+  <img src="./repo-images/Image 9.png" width="400" alt="T-800 Demo 9"/>
+  <img src="./repo-images/Image 10.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="./repo-images/Image 11.png" width="400" alt="Termix Demo 11"/>
-  <img src="./repo-images/Image 12.png" width="400" alt="Termix Demo 12"/>
+  <img src="./repo-images/Image 11.png" width="400" alt="T-800 Demo 11"/>
+  <img src="./repo-images/Image 12.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 Some videos and images may be out of date or may not perfectly showcase features.

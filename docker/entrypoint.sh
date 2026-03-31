@@ -25,8 +25,8 @@ fi
 export PORT=${PORT:-8080}
 export ENABLE_SSL=${ENABLE_SSL:-false}
 export SSL_PORT=${SSL_PORT:-8443}
-export SSL_CERT_PATH=${SSL_CERT_PATH:-/app/data/ssl/termix.crt}
-export SSL_KEY_PATH=${SSL_KEY_PATH:-/app/data/ssl/termix.key}
+export SSL_CERT_PATH=${SSL_CERT_PATH:-/app/data/ssl/t800.crt}
+export SSL_KEY_PATH=${SSL_KEY_PATH:-/app/data/ssl/t800.key}
 
 echo "Configuring web UI to run on port: $PORT"
 
@@ -72,20 +72,20 @@ if [ "$ENABLE_SSL" = "true" ]; then
 
     DOMAIN=${SSL_DOMAIN:-localhost}
     
-    if [ -f "/app/data/ssl/termix.crt" ] && [ -f "/app/data/ssl/termix.key" ]; then
+    if [ -f "/app/data/ssl/t800.crt" ] && [ -f "/app/data/ssl/t800.key" ]; then
         echo "SSL certificates found, checking validity..."
-        
-        if openssl x509 -in /app/data/ssl/termix.crt -checkend 2592000 -noout >/dev/null 2>&1; then
+
+        if openssl x509 -in /app/data/ssl/t800.crt -checkend 2592000 -noout >/dev/null 2>&1; then
             echo "SSL certificates are valid and will be reused for domain: $DOMAIN"
         else
             echo "SSL certificate is expired or expiring soon, regenerating..."
-            rm -f /app/data/ssl/termix.crt /app/data/ssl/termix.key
+            rm -f /app/data/ssl/t800.crt /app/data/ssl/t800.key
         fi
     else
         echo "SSL certificates not found, will generate new ones..."
     fi
-    
-    if [ ! -f "/app/data/ssl/termix.crt" ] || [ ! -f "/app/data/ssl/termix.key" ]; then
+
+    if [ ! -f "/app/data/ssl/t800.crt" ] || [ ! -f "/app/data/ssl/t800.key" ]; then
         echo "Generating SSL certificates for domain: $DOMAIN"
 
         cat > /app/data/ssl/openssl.conf << EOF
@@ -100,7 +100,7 @@ req_extensions = v3_req
 C=US
 ST=State
 L=City
-O=Termix
+O=T-800
 OU=IT Department
 CN=$DOMAIN
 
@@ -118,12 +118,12 @@ IP.2 = ::1
 IP.3 = 0.0.0.0
 EOF
 
-        openssl genrsa -out /app/data/ssl/termix.key 2048
+        openssl genrsa -out /app/data/ssl/t800.key 2048
 
-        openssl req -new -x509 -key /app/data/ssl/termix.key -out /app/data/ssl/termix.crt -days 365 -config /app/data/ssl/openssl.conf -extensions v3_req
+        openssl req -new -x509 -key /app/data/ssl/t800.key -out /app/data/ssl/t800.crt -days 365 -config /app/data/ssl/openssl.conf -extensions v3_req
 
-        chmod 600 /app/data/ssl/termix.key
-        chmod 644 /app/data/ssl/termix.crt
+        chmod 600 /app/data/ssl/t800.key
+        chmod 644 /app/data/ssl/t800.crt
 
         rm -f /app/data/ssl/openssl.conf
         

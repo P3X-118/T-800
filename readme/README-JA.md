@@ -17,9 +17,9 @@
   <a href="README-IT.md"><img src="https://flagcdn.com/it.svg" alt="Italiano" width="24" height="16"> Italiano</a>
 </p>
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Termix-SSH/Termix?style=flat&label=Stars)
-![GitHub forks](https://img.shields.io/github/forks/Termix-SSH/Termix?style=flat&label=Forks)
-![GitHub Release](https://img.shields.io/github/v/release/Termix-SSH/Termix?style=flat&label=Release)
+![GitHub Repo stars](https://img.shields.io/github/stars/P3X-118/T-800?style=flat&label=Stars)
+![GitHub forks](https://img.shields.io/github/forks/P3X-118/T-800?style=flat&label=Forks)
+![GitHub Release](https://img.shields.io/github/v/release/P3X-118/T-800?style=flat&label=Release)
 <a href="https://discord.gg/jVQGdvHDrf"><img alt="Discord" src="https://img.shields.io/discord/1347374268253470720"></a>
 
 <p align="center">
@@ -30,8 +30,8 @@
 
 <br />
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../repo-images/HeaderImage.png style="width: auto; height: auto;">  </a>
 </p>
 
 プロジェクトを支援していただける方はこちらからどうぞ！\
@@ -40,11 +40,11 @@
 # 概要
 
 <p align="center">
-  <a href="https://github.com/Termix-SSH/Termix">
-    <img alt="Termix Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
+  <a href="https://github.com/P3X-118/T-800">
+    <img alt="T-800 Banner" src=../public/icon.svg style="width: 250px; height: 250px;">  </a>
 </p>
 
-Termixは、オープンソースで永久無料のセルフホスト型オールインワンサーバー管理プラットフォームです。単一の直感的なインターフェースを通じて、サーバーとインフラストラクチャを管理するマルチプラットフォームソリューションを提供します。Termixは、SSHターミナルアクセス、SSHトンネリング機能、リモートファイル管理、その他多くのツールを提供します。Termixは、すべてのプラットフォームで利用可能なTermiusの完全無料でセルフホスト可能な代替ソリューションです。
+T-800は、オープンソースで永久無料のセルフホスト型オールインワンサーバー管理プラットフォームです。単一の直感的なインターフェースを通じて、サーバーとインフラストラクチャを管理するマルチプラットフォームソリューションを提供します。T-800は、SSHターミナルアクセス、SSHトンネリング機能、リモートファイル管理、その他多くのツールを提供します。T-800は、すべてのプラットフォームで利用可能なTermiusの完全無料でセルフホスト可能な代替ソリューションです。
 
 # 機能
 
@@ -58,11 +58,11 @@ Termixは、オープンソースで永久無料のセルフホスト型オー�
 - **ダッシュボード** - ダッシュボードでサーバー情報を一目で確認
 - **RBAC** - ロールを作成し、ユーザー/ロール間でホストを共有
 - **ユーザー認証** - 管理者コントロールとOIDCおよび2FA（TOTP）対応による安全なユーザー管理。すべてのプラットフォームでアクティブなユーザーセッションを表示し、権限を取り消し可能。OIDC/ローカルアカウントの連携
-- **データベース暗号化** - バックエンドは暗号化されたSQLiteデータベースファイルとして保存。詳細は[ドキュメント](https://docs.termix.site/security)をご覧ください
+- **データベース暗号化** - バックエンドは暗号化されたSQLiteデータベースファイルとして保存。詳細は[ドキュメント](https://t-800.i.sgc.ai/security)をご覧ください
 - **データのエクスポート/インポート** - SSHホスト、認証情報、ファイルマネージャーデータのエクスポートとインポート
 - **自動SSL設定** - HTTPSリダイレクト付きの組み込みSSL証明書生成・管理
 - **モダンUI** - React、Tailwind CSS、Shadcnで構築された、デスクトップ/モバイル対応のクリーンなインターフェース。ダーク/ライトモードの切り替え対応。URLルートで任意の接続をフルスクリーンで開くことが可能
-- **多言語対応** - 約30言語の組み込みサポート（[Crowdin](https://docs.termix.site/translations)で管理）
+- **多言語対応** - 約30言語の組み込みサポート（[Crowdin](https://t-800.i.sgc.ai/translations)で管理）
 - **プラットフォーム対応** - Webアプリ、デスクトップアプリケーション（Windows、Linux、macOS）、PWA、iOS・Android専用モバイル/タブレットアプリとして利用可能
 - **SSHツール** - ワンクリックで実行できる再利用可能なコマンドスニペットの作成。複数の開いているターミナルに対して同時にコマンドを実行
 - **コマンド履歴** - 過去に実行したSSHコマンドの自動補完と表示
@@ -74,7 +74,7 @@ Termixは、オープンソースで永久無料のセルフホスト型オー�
 
 # 予定されている機能
 
-すべての予定機能については[Projects](https://github.com/orgs/Termix-SSH/projects/2)をご覧ください。コントリビュートをご希望の方は[Contributing](https://github.com/Termix-SSH/Termix/blob/main/CONTRIBUTING.md)をご覧ください。
+すべての予定機能については[Projects](https://github.com/orgs/P3X-118/projects/2)をご覧ください。コントリビュートをご希望の方は[Contributing](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md)をご覧ください。
 
 # インストール
 
@@ -102,24 +102,24 @@ Termixは、オープンソースで永久無料のセルフホスト型オー�
   - Google Play Store
   - APK
 
-すべてのプラットフォームへのTermixのインストール方法については、Termixの[ドキュメント](https://docs.termix.site/install)をご覧ください。以下はDocker Composeファイルのサンプルです：
+すべてのプラットフォームへのT-800のインストール方法については、T-800の[ドキュメント](https://t-800.i.sgc.ai/install)をご覧ください。以下はDocker Composeファイルのサンプルです：
 
 ```yaml
 services:
-  termix:
-    image: ghcr.io/lukegus/termix:latest
-    container_name: termix
+  t-800:
+    image: docker.io/legitservices/t-800:latest
+    container_name: t-800
     restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
-      - termix-data:/app/data
+      - t800-data:/app/data
     environment:
       PORT: "8080"
     depends_on:
       - guacd
     networks:
-      - termix-net
+      - t800-net
 
   guacd:
     image: guacamole/guacd:latest
@@ -128,14 +128,14 @@ services:
     ports:
       - "4822:4822"
     networks:
-      - termix-net
+      - t800-net
 
 volumes:
-  termix-data:
+  t800-data:
     driver: local
 
 networks:
-  termix-net:
+  t800-net:
     driver: bridge
 ```
 
@@ -161,40 +161,40 @@ networks:
 
 # サポート
 
-Termixに関するヘルプや機能リクエストが必要な場合は、[Issues](https://github.com/Termix-SSH/Support/issues)ページにアクセスし、ログインして`New Issue`を押してください。Issueはできるだけ詳細に記述し、英語での記述が望ましいです。また、[Discord](https://discord.gg/jVQGdvHDrf)サーバーに参加してサポートチャンネルを利用することもできますが、応答時間が長くなる場合があります。
+T-800に関するヘルプや機能リクエストが必要な場合は、[Issues](https://github.com/P3X-118/T-800/issues)ページにアクセスし、ログインして`New Issue`を押してください。Issueはできるだけ詳細に記述し、英語での記述が望ましいです。また、[Discord](https://discord.gg/jVQGdvHDrf)サーバーに参加してサポートチャンネルを利用することもできますが、応答時間が長くなる場合があります。
 
 # スクリーンショット
 
-[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@TermixSSH/videos)
+[![YouTube](../repo-images/YouTube.jpg)](https://www.youtube.com/@T-800SSH/videos)
 
 <p align="center">
-  <img src="../repo-images/Image%201.png" width="400" alt="Termix Demo 1"/>
-  <img src="../repo-images/Image%202.png" width="400" alt="Termix Demo 2"/>
+  <img src="../repo-images/Image%201.png" width="400" alt="T-800 Demo 1"/>
+  <img src="../repo-images/Image%202.png" width="400" alt="T-800 Demo 2"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%203.png" width="400" alt="Termix Demo 3"/>
-  <img src="../repo-images/Image%204.png" width="400" alt="Termix Demo 4"/>
+  <img src="../repo-images/Image%203.png" width="400" alt="T-800 Demo 3"/>
+  <img src="../repo-images/Image%204.png" width="400" alt="T-800 Demo 4"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%205.png" width="400" alt="Termix Demo 5"/>
-  <img src="../repo-images/Image%206.png" width="400" alt="Termix Demo 6"/>
+  <img src="../repo-images/Image%205.png" width="400" alt="T-800 Demo 5"/>
+  <img src="../repo-images/Image%206.png" width="400" alt="T-800 Demo 6"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%207.png" width="400" alt="Termix Demo 7"/>
-  <img src="../repo-images/Image%208.png" width="400" alt="Termix Demo 8"/>
+  <img src="../repo-images/Image%207.png" width="400" alt="T-800 Demo 7"/>
+  <img src="../repo-images/Image%208.png" width="400" alt="T-800 Demo 8"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%209.png" width="400" alt="Termix Demo 9"/>
-  <img src="../repo-images/Image%2010.png" width="400" alt="Termix Demo 10"/>
+  <img src="../repo-images/Image%209.png" width="400" alt="T-800 Demo 9"/>
+  <img src="../repo-images/Image%2010.png" width="400" alt="T-800 Demo 10"/>
 </p>
 
 <p align="center">
-  <img src="../repo-images/Image%2011.png" width="400" alt="Termix Demo 11"/>
-  <img src="../repo-images/Image%2012.png" width="400" alt="Termix Demo 12"/>
+  <img src="../repo-images/Image%2011.png" width="400" alt="T-800 Demo 11"/>
+  <img src="../repo-images/Image%2012.png" width="400" alt="T-800 Demo 12"/>
 </p>
 
 一部の動画や画像は古い場合や、機能を完全に紹介していない場合があります。

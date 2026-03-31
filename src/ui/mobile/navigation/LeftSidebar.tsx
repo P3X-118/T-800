@@ -186,7 +186,7 @@ export function LeftSidebar({
         <Sidebar>
           <SidebarHeader>
             <SidebarGroupLabel className="text-lg font-bold text-foreground">
-              Termix
+              T-800
               <Button
                 variant="outline"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}

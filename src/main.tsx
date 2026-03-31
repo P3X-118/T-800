@@ -97,7 +97,7 @@ function RootApp() {
 
   const userAgent =
     navigator.userAgent || navigator.vendor || (window as any).opera || "";
-  const isTermixMobile = /Termix-Mobile/.test(userAgent);
+  const isT800Mobile = /T800-Mobile/.test(userAgent);
 
   const searchParams = new URLSearchParams(window.location.search);
   const isFullscreen = searchParams.has("view");
@@ -111,7 +111,7 @@ function RootApp() {
       return <DesktopApp />;
     }
 
-    if (isTermixMobile) {
+    if (isT800Mobile) {
       return <MobileApp key="mobile" />;
     }
 

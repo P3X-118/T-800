@@ -16,7 +16,7 @@ export function HostDockerTab({ form, t }: HostDockerTabProps) {
         variant="outline"
         size="sm"
         className="h-8 px-3 text-xs"
-        onClick={() => window.open("https://docs.termix.site/docker", "_blank")}
+        onClick={() => window.open("https://t-800.i.sgc.ai/docker", "_blank")}
       >
         {t("common.documentation")}
       </Button>

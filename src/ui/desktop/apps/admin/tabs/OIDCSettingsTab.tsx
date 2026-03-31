@@ -175,7 +175,7 @@ export function OIDCSettingsTab({
           variant="outline"
           size="sm"
           className="h-8 px-3 text-xs"
-          onClick={() => window.open("https://docs.termix.site/oidc", "_blank")}
+          onClick={() => window.open("https://t-800.i.sgc.ai/oidc", "_blank")}
         >
           {t("common.documentation")}
         </Button>

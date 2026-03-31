@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
-$packageName = 'termix-ssh'
-$softwareName = 'Termix*'
+$packageName = 't800-ssh'
+$softwareName = 'T-800*'
 $installerType = 'msi'
 
 $silentArgs = '/qn /norestart'

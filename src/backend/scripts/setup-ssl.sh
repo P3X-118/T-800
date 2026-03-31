@@ -3,8 +3,8 @@
 set -e
 
 SSL_DIR="$(dirname "$0")/../ssl"
-CERT_FILE="$SSL_DIR/termix.crt"
-KEY_FILE="$SSL_DIR/termix.key"
+CERT_FILE="$SSL_DIR/t800.crt"
+KEY_FILE="$SSL_DIR/t800.key"
 DAYS_VALID=365
 
 DOMAIN=${SSL_DOMAIN:-"localhost"}
@@ -65,7 +65,7 @@ req_extensions = v3_req
 C=US
 ST=State
 L=City
-O=Termix
+O=T-800
 OU=IT Department
 CN=$DOMAIN
 

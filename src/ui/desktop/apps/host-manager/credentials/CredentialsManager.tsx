@@ -173,7 +173,7 @@ export function CredentialsManager({
 
   const getDeployCommand = (credential: Credential): string => {
     const publicKey = credential.publicKey?.trim() || "";
-    const comment = `${credential.name || credential.username}@Termix`;
+    const comment = `${credential.name || credential.username}@T-800`;
     const keyWithComment = publicKey.includes(" ")
       ? `${publicKey.split(" ").slice(0, 2).join(" ")} ${comment}`
       : `${publicKey} ${comment}`;

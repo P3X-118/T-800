@@ -1,7 +1,7 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { toast } from "sonner";
 import { getBasePath } from "@/lib/base-path";
-import { clearTermixSessionStorage } from "@/ui/desktop/navigation/tabs/TabContext";
+import { clearT800SessionStorage } from "@/ui/desktop/navigation/tabs/TabContext";
 import type {
   SSHHost,
   SSHHostData,
@@ -339,7 +339,7 @@ function createApiInstance(
           platform = "iOS";
         }
       }
-      config.headers["User-Agent"] = `Termix-Mobile/${platform}`;
+      config.headers["User-Agent"] = `T800-Mobile/${platform}`;
     }
 
     if (!isElectron()) {
@@ -957,7 +957,7 @@ function handleApiError(error: unknown, operation: string): never {
           errorContext,
         );
         throw new ApiError(
-          "No server configured. Please configure a Termix server first.",
+          "No server configured. Please configure a T-800 server first.",
           0,
           "NO_SERVER_CONFIGURED",
         );
@@ -2581,7 +2581,7 @@ export async function logoutUser(): Promise<{
   try {
     const response = await authApi.post("/users/logout");
 
-    clearTermixSessionStorage();
+    clearT800SessionStorage();
 
     if (isElectron()) {
       localStorage.removeItem("jwt");
@@ -2602,7 +2602,7 @@ export async function logoutUser(): Promise<{
 
     return response.data;
   } catch (error) {
-    clearTermixSessionStorage();
+    clearT800SessionStorage();
 
     if (isElectron()) {
       localStorage.removeItem("jwt");

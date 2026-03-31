@@ -77,14 +77,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         window.matchMedia("(prefers-color-scheme: dark)").matches);
 
     let themeColors;
-    if (config.theme === "termix") {
+    if (config.theme === "t800") {
       themeColors = isDarkMode
-        ? TERMINAL_THEMES.termixDark.colors
-        : TERMINAL_THEMES.termixLight.colors;
+        ? TERMINAL_THEMES.t800Dark.colors
+        : TERMINAL_THEMES.t800Light.colors;
     } else {
       themeColors =
         TERMINAL_THEMES[config.theme]?.colors ||
-        TERMINAL_THEMES.termixDark.colors;
+        TERMINAL_THEMES.t800Dark.colors;
     }
     const backgroundColor = themeColors.background;
 

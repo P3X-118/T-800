@@ -15,11 +15,11 @@ export function detectPlatform(req: Request): DeviceType {
   const userAgent = req.headers["user-agent"] || "";
   const electronHeader = req.headers["x-electron-app"];
 
-  if (electronHeader === "true" || userAgent.includes("Termix-Desktop")) {
+  if (electronHeader === "true" || userAgent.includes("T800-Desktop")) {
     return "desktop";
   }
 
-  if (userAgent.includes("Termix-Mobile")) {
+  if (userAgent.includes("T800-Mobile")) {
     return "mobile";
   }
 
@@ -60,10 +60,10 @@ function parseElectronUserAgent(userAgent: string): DeviceInfo {
   let os = "Unknown OS";
   let version = "Unknown";
 
-  const termixMatch = userAgent.match(/Termix-Desktop\/([\d.]+)\s*\(([^;)]+)/);
-  if (termixMatch) {
-    version = termixMatch[1];
-    os = termixMatch[2].trim();
+  const t800Match = userAgent.match(/T800-Desktop\/([\d.]+)\s*\(([^;)]+)/);
+  if (t800Match) {
+    version = t800Match[1];
+    os = t800Match[2].trim();
   } else {
     if (userAgent.includes("Windows")) {
       os = parseWindowsVersion(userAgent);
@@ -83,10 +83,10 @@ function parseElectronUserAgent(userAgent: string): DeviceInfo {
 
   return {
     type: "desktop",
-    browser: "Termix Desktop",
+    browser: "T-800 Desktop",
     version,
     os,
-    deviceInfo: `Termix Desktop on ${os}`,
+    deviceInfo: `T-800 Desktop on ${os}`,
   };
 }
 
@@ -94,9 +94,9 @@ function parseMobileUserAgent(userAgent: string): DeviceInfo {
   let os = "Unknown OS";
   let version = "Unknown";
 
-  const termixPlatformMatch = userAgent.match(/Termix-Mobile\/(Android|iOS)/i);
-  if (termixPlatformMatch) {
-    const platform = termixPlatformMatch[1];
+  const t800PlatformMatch = userAgent.match(/T800-Mobile\/(Android|iOS)/i);
+  if (t800PlatformMatch) {
+    const platform = t800PlatformMatch[1];
     if (platform.toLowerCase() === "android") {
       const androidMatch = userAgent.match(/Android ([\d.]+)/);
       os = androidMatch ? `Android ${androidMatch[1]}` : "Android";
@@ -129,7 +129,7 @@ function parseMobileUserAgent(userAgent: string): DeviceInfo {
   }
 
   const versionMatch = userAgent.match(
-    /Termix-Mobile\/(?:Android|iOS|)([\d.]+)/i,
+    /T800-Mobile\/(?:Android|iOS|)([\d.]+)/i,
   );
   if (versionMatch) {
     version = versionMatch[1];
@@ -137,10 +137,10 @@ function parseMobileUserAgent(userAgent: string): DeviceInfo {
 
   return {
     type: "mobile",
-    browser: "Termix Mobile",
+    browser: "T-800 Mobile",
     version,
     os,
-    deviceInfo: `Termix Mobile on ${os}`,
+    deviceInfo: `T-800 Mobile on ${os}`,
   };
 }
 

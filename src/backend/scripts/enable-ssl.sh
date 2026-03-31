@@ -57,7 +57,7 @@ setup_env_file() {
     fi
 
     cat > "$ENV_FILE" << EOF
-# Termix SSL Configuration - Auto-generated $(date)
+# T-800 SSL Configuration - Auto-generated $(date)
 
 # SSL/TLS Configuration
 ENABLE_SSL=true
