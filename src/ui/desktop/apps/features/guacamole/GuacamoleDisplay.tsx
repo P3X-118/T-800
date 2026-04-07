@@ -143,7 +143,9 @@ export const GuacamoleDisplay = forwardRef<
         const dpi = connectionConfig.dpi || 96;
 
         const wsBase = isDev
-          ? `ws://localhost:30008`
+          ? import.meta.env.VITE_DEV_PROXY === "true"
+            ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/guacamole`
+            : `ws://localhost:30008`
           : isElectron()
             ? (() => {
                 const base =

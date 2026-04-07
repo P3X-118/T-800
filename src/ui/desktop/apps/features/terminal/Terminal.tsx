@@ -739,7 +739,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       }
 
       const baseWsUrl = isDev
-        ? `${window.location.protocol === "https:" ? "wss" : "ws"}://localhost:30002`
+        ? import.meta.env.VITE_DEV_PROXY === "true"
+          ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/terminal`
+          : `${window.location.protocol === "https:" ? "wss" : "ws"}://localhost:30002`
         : isElectron()
           ? (() => {
               const baseUrl =

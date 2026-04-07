@@ -45,6 +45,7 @@ export function TopNavbar({
     removeTab,
     allSplitScreenTab,
     reorderTabs,
+    updateTab,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -53,6 +54,7 @@ export function TopNavbar({
     removeTab: (id: number) => void;
     allSplitScreenTab: number[];
     reorderTabs: (fromIndex: number, toIndex: number) => void;
+    updateTab: (tabId: number, updates: Record<string, unknown>) => void;
   };
   const leftPosition =
     state === "collapsed" ? "26px" : "calc(var(--sidebar-width) + 8px)";
@@ -526,6 +528,12 @@ export function TopNavbar({
                   isDragging={isDraggingThisTab}
                   isDragOver={false}
                   hostConfig={tab.hostConfig}
+                  onRename={
+                    tab.type !== "home"
+                      ? (newTitle: string) =>
+                          updateTab(tab.id, { title: newTitle })
+                      : undefined
+                  }
                 />
               </div>
             );

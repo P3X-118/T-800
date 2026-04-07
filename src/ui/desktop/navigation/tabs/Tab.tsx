@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ import {
   ArrowDownUp as TunnelIcon,
   Container as DockerIcon,
   Key,
+  Pencil,
 } from "lucide-react";
 import type { SSHHost } from "@/types";
 
@@ -38,6 +39,7 @@ interface TabProps {
   isValidDropTarget?: boolean;
   isHoveredDropTarget?: boolean;
   hostConfig?: SSHHost;
+  onRename?: (newTitle: string) => void;
 }
 
 export function Tab({
@@ -58,8 +60,34 @@ export function Tab({
   isValidDropTarget = false,
   isHoveredDropTarget = false,
   hostConfig,
+  onRename,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+    };
+  }, [contextMenu]);
 
   const handleCopyPassword = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -206,40 +234,79 @@ export function Tab({
     const { base, suffix } = splitTitle(displayTitle);
 
     return (
-      <div
-        className={cn(tabBaseClasses, "cursor-pointer")}
-        onClick={!disableActivate ? onActivate : undefined}
-        style={{
-          marginBottom: "-2px",
-          borderBottom:
-            isActive || isSplit ? "2px solid var(--foreground)" : "none",
-        }}
-      >
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          {isServer ? (
-            <ServerIcon className="h-4 w-4 flex-shrink-0" />
-          ) : isFileManager ? (
-            <FolderIcon className="h-4 w-4 flex-shrink-0" />
-          ) : isTunnel ? (
-            <TunnelIcon className="h-4 w-4 flex-shrink-0" />
-          ) : isDocker ? (
-            <DockerIcon className="h-4 w-4 flex-shrink-0" />
-          ) : isUserProfile ? (
-            <UserIcon className="h-4 w-4 flex-shrink-0" />
-          ) : tabType === "rdp" ? (
-            <MonitorIcon className="h-4 w-4 flex-shrink-0" />
-          ) : tabType === "vnc" ? (
-            <EyeIcon className="h-4 w-4 flex-shrink-0" />
-          ) : tabType === "telnet" ? (
-            <MessageSquareIcon className="h-4 w-4 flex-shrink-0" />
-          ) : (
-            <TerminalIcon className="h-4 w-4 flex-shrink-0" />
-          )}
-          <span className="truncate text-sm flex-1 min-w-0">{base}</span>
-          {suffix && <span className="text-sm flex-shrink-0">{suffix}</span>}
-        </div>
+      <>
+        <div
+          className={cn(tabBaseClasses, "cursor-pointer")}
+          onClick={!disableActivate ? onActivate : undefined}
+          onContextMenu={
+            onRename
+              ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({ x: e.clientX, y: e.clientY });
+                }
+              : undefined
+          }
+          style={{
+            marginBottom: "-2px",
+            borderBottom:
+              isActive || isSplit ? "2px solid var(--foreground)" : "none",
+          }}
+        >
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            {isServer ? (
+              <ServerIcon className="h-4 w-4 flex-shrink-0" />
+            ) : isFileManager ? (
+              <FolderIcon className="h-4 w-4 flex-shrink-0" />
+            ) : isTunnel ? (
+              <TunnelIcon className="h-4 w-4 flex-shrink-0" />
+            ) : isDocker ? (
+              <DockerIcon className="h-4 w-4 flex-shrink-0" />
+            ) : isUserProfile ? (
+              <UserIcon className="h-4 w-4 flex-shrink-0" />
+            ) : tabType === "rdp" ? (
+              <MonitorIcon className="h-4 w-4 flex-shrink-0" />
+            ) : tabType === "vnc" ? (
+              <EyeIcon className="h-4 w-4 flex-shrink-0" />
+            ) : tabType === "telnet" ? (
+              <MessageSquareIcon className="h-4 w-4 flex-shrink-0" />
+            ) : (
+              <TerminalIcon className="h-4 w-4 flex-shrink-0" />
+            )}
+            {isEditing ? (
+              <input
+                ref={editInputRef}
+                className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-sm flex-1 min-w-0 h-[22px] leading-[22px]"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    const trimmed = editValue.trim();
+                    if (trimmed && onRename) onRename(trimmed);
+                    setIsEditing(false);
+                  } else if (e.key === "Escape") {
+                    setIsEditing(false);
+                  }
+                }}
+                onBlur={() => {
+                  const trimmed = editValue.trim();
+                  if (trimmed && onRename) onRename(trimmed);
+                  setIsEditing(false);
+                }}
+              />
+            ) : (
+              <>
+                <span className="truncate text-sm flex-1 min-w-0">{base}</span>
+                {suffix && (
+                  <span className="text-sm flex-shrink-0">{suffix}</span>
+                )}
+              </>
+            )}
+          </div>
 
-        {hasPassword && (
+          {hasPassword && (
           <Button
             variant="ghost"
             size="icon"
@@ -289,6 +356,27 @@ export function Tab({
           </Button>
         )}
       </div>
+
+      {contextMenu && (
+        <div
+          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              setEditValue(displayTitle);
+              setIsEditing(true);
+              setContextMenu(null);
+            }}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Rename
+          </button>
+        </div>
+      )}
+      </>
     );
   }
 

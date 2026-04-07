@@ -1,0 +1,17 @@
+services:
+  nginx:
+    image: nginx:alpine
+    network_mode: host
+    volumes:
+      - ../dist:/app/html:ro
+      - ./nginx.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - PORT=5175
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        mkdir -p /app/nginx/logs /app/nginx/cache /app/nginx/client_body /app/nginx/proxy_temp /app/nginx/fastcgi_temp /app/nginx/uwsgi_temp /app/nginx/scgi_temp
+        envsubst '$$PORT' < /etc/nginx/templates/default.conf.template > /app/nginx/nginx.conf
+        nginx -c /app/nginx/nginx.conf -g 'daemon off;'
+    restart: unless-stopped

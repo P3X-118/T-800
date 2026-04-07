@@ -721,6 +721,9 @@ function getApiUrl(path: string, defaultPort: number): string {
     console.warn("Electron mode but no server configured!");
     return "http://no-server-configured";
   } else if (devMode) {
+    if (import.meta.env.VITE_DEV_PROXY === "true") {
+      return path;
+    }
     const protocol = window.location.protocol === "https:" ? "https" : "http";
     const sslPort = protocol === "https" ? 8443 : defaultPort;
     const url = `${protocol}://${apiHost}:${sslPort}${path}`;

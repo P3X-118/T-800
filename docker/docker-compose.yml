@@ -4,7 +4,7 @@ services:
     container_name: t800
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "169.254.0.123:8180:8080"
     volumes:
       - t800-data:/app/data
     environment:
@@ -18,8 +18,6 @@ services:
     image: guacamole/guacd:latest
     container_name: guacd
     restart: unless-stopped
-    ports:
-      - "4822:4822"
     networks:
       - t800-net
 

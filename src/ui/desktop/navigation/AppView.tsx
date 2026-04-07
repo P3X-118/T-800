@@ -127,6 +127,7 @@ export function AppView({
     {},
   );
   const [ready, setReady] = useState<boolean>(true);
+
   const [resetKey, setResetKey] = useState<number>(0);
   const previousStylesRef = useRef<Record<number, React.CSSProperties>>({});
 
@@ -532,7 +533,7 @@ export function AppView({
               }}
               className="h-full w-full flex flex-col relative"
             >
-              <div className="bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[11] relative">
+              <div className="bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[11] relative select-none">
                 {tab.title}
                 {node === 1 && <ResetButton onClick={handleReset} />}
               </div>

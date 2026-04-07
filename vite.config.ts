@@ -60,7 +60,47 @@ export default defineConfig({
           key: fs.readFileSync(sslKeyPath),
         }
       : false,
-    port: 5173,
-    host: "localhost",
+    port: 5175,
+    host: "0.0.0.0",
+    allowedHosts: true,
+    hmr: {
+      host: "169.254.0.123",
+    },
+    proxy: {
+      // Auth, Host, RBAC APIs (port 30001)
+      "/users": "http://127.0.0.1:30001",
+      "/host": "http://127.0.0.1:30001",
+      "/db": "http://127.0.0.1:30001",
+      "/version": "http://127.0.0.1:30001",
+      "/health": "http://127.0.0.1:30001",
+      "/releases": "http://127.0.0.1:30001",
+      "/rbac": "http://127.0.0.1:30001",
+      "/bulk-import": "http://127.0.0.1:30001",
+      "/bulk-update": "http://127.0.0.1:30001",
+      "/autostart": "http://127.0.0.1:30001",
+      "/alerts": "http://127.0.0.1:30001",
+      "/settings": "http://127.0.0.1:30001",
+      "/credential": "http://127.0.0.1:30001",
+      // Terminal WebSocket (port 30002)
+      "/terminal": {
+        target: "http://127.0.0.1:30002",
+        ws: true,
+      },
+      // Tunnel API (port 30003)
+      "/ssh": "http://127.0.0.1:30003",
+      // File Manager API (port 30004)
+      "/ssh/file_manager": "http://127.0.0.1:30004",
+      // Server Stats API (port 30005)
+      "/stats": "http://127.0.0.1:30005",
+      // Dashboard API (port 30006)
+      "/dashboard": "http://127.0.0.1:30006",
+      // Docker API (port 30007)
+      "/docker": "http://127.0.0.1:30007",
+      // Guacamole WebSocket (port 30008)
+      "/guacamole": {
+        target: "http://127.0.0.1:30008",
+        ws: true,
+      },
+    },
   },
 });
