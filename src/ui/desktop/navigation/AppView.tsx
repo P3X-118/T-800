@@ -87,14 +87,31 @@ export function AppView({
   rightSidebarOpen = false,
   rightSidebarWidth = 400,
 }: TerminalViewProps): React.ReactElement {
-  const { tabs, currentTab, allSplitScreenTab, removeTab, updateTab } =
-    useTabs() as {
-      tabs: TabData[];
-      currentTab: number;
-      allSplitScreenTab: number[];
-      removeTab: (id: number) => void;
-      updateTab: (tabId: number, updates: Partial<Omit<TabData, "id">>) => void;
-    };
+  const {
+    tabs,
+    currentTab,
+    allSplitScreenTab,
+    removeTab,
+    updateTab,
+    tabDragToSplit,
+    setDragOverTerminalArea,
+    executeDragSplit,
+  } = useTabs() as {
+    tabs: TabData[];
+    currentTab: number;
+    allSplitScreenTab: number[];
+    removeTab: (id: number) => void;
+    updateTab: (
+      tabId: number,
+      updates: Partial<Omit<TabData, "id">>,
+    ) => void;
+    tabDragToSplit: {
+      draggedTabId: number;
+      isOverTerminalArea: boolean;
+    } | null;
+    setDragOverTerminalArea: (isOver: boolean) => void;
+    executeDragSplit: (draggedTabId: number) => void;
+  };
   const { state: sidebarState } = useSidebar();
   const { theme: appTheme } = useTheme();
 
@@ -647,9 +664,61 @@ export function AppView({
         transition:
           "margin-left 200ms linear, margin-right 200ms linear, margin-top 200ms linear",
       }}
+      onDragOver={
+        tabDragToSplit
+          ? (e) => {
+              e.preventDefault();
+              setDragOverTerminalArea(true);
+            }
+          : undefined
+      }
+      onDragLeave={
+        tabDragToSplit
+          ? (e) => {
+              if (
+                !containerRef.current?.contains(
+                  e.relatedTarget as Node,
+                )
+              ) {
+                setDragOverTerminalArea(false);
+              }
+            }
+          : undefined
+      }
+      onDrop={
+        tabDragToSplit
+          ? (e) => {
+              e.preventDefault();
+              executeDragSplit(tabDragToSplit.draggedTabId);
+            }
+          : undefined
+      }
     >
       {renderTerminalsLayer()}
       {renderSplitOverlays()}
+
+      {tabDragToSplit?.isOverTerminalArea && (() => {
+        const draggedTab = tabs.find(
+          (t: TabData) => t.id === tabDragToSplit.draggedTabId,
+        );
+        const activeTab = tabs.find(
+          (t: TabData) => t.id === currentTab,
+        );
+        return (
+          <div className="absolute inset-0 z-[50] pointer-events-none flex gap-2 p-3">
+            <div className="flex-1 border-2 border-dashed border-blue-500/60 rounded-lg flex items-center justify-center bg-blue-500/10">
+              <span className="text-blue-400 text-sm font-medium">
+                {activeTab?.title || "Current"}
+              </span>
+            </div>
+            <div className="flex-1 border-2 border-dashed border-green-500/60 rounded-lg flex items-center justify-center bg-green-500/10">
+              <span className="text-green-400 text-sm font-medium">
+                {draggedTab?.title || "Dragged"}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

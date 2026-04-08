@@ -46,6 +46,10 @@ export function TopNavbar({
     allSplitScreenTab,
     reorderTabs,
     updateTab,
+    tabDragToSplit,
+    startTabDragToSplit,
+    cancelTabDragToSplit,
+    setSplitScreenTabs,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -55,6 +59,10 @@ export function TopNavbar({
     allSplitScreenTab: number[];
     reorderTabs: (fromIndex: number, toIndex: number) => void;
     updateTab: (tabId: number, updates: Record<string, unknown>) => void;
+    tabDragToSplit: { draggedTabId: number; isOverTerminalArea: boolean } | null;
+    startTabDragToSplit: (tabId: number) => void;
+    cancelTabDragToSplit: () => void;
+    setSplitScreenTabs: (tabIds: number[]) => void;
   };
   const leftPosition =
     state === "collapsed" ? "26px" : "calc(var(--sidebar-width) + 8px)";
@@ -180,9 +188,41 @@ export function TopNavbar({
     });
   };
 
+  const SPLIT_THRESHOLD_PX = 40;
+  const SPLITTABLE_TYPES = [
+    "terminal",
+    "server_stats",
+    "file_manager",
+    "tunnel",
+    "docker",
+    "rdp",
+    "vnc",
+    "telnet",
+  ];
+
   const handleDrag = (e: React.DragEvent) => {
-    if (e.clientX === 0) return;
+    if (e.clientX === 0 && e.clientY === 0) return;
     if (dragState.draggedIndex === null) return;
+
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    if (containerRect) {
+      const distanceBelow = e.clientY - containerRect.bottom;
+      const draggedTab = tabs[dragState.draggedIndex];
+
+      if (
+        distanceBelow > SPLIT_THRESHOLD_PX &&
+        draggedTab &&
+        SPLITTABLE_TYPES.includes(draggedTab.type) &&
+        tabs.filter((t) => SPLITTABLE_TYPES.includes(t.type)).length >= 2
+      ) {
+        if (!tabDragToSplit) {
+          startTabDragToSplit(draggedTab.id);
+        }
+        return;
+      } else if (tabDragToSplit) {
+        cancelTabDragToSplit();
+      }
+    }
 
     setDragState((prev) => ({
       ...prev,
@@ -288,6 +328,11 @@ export function TopNavbar({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
 
+    if (tabDragToSplit) {
+      // Split mode — AppView handles the drop
+      return;
+    }
+
     if (isProcessingDropRef.current) return;
     isProcessingDropRef.current = true;
 
@@ -331,6 +376,7 @@ export function TopNavbar({
   };
 
   const handleDragEnd = () => {
+    cancelTabDragToSplit();
     setIsInDropAnimation(false);
     setDragState({
       draggedId: null,
@@ -403,7 +449,7 @@ export function TopNavbar({
 
             let transform = "";
 
-            if (!isInDropAnimation) {
+            if (!isInDropAnimation && !tabDragToSplit) {
               if (isDraggingThisTab) {
                 transform = `translateX(${dragOffset}px)`;
               } else if (
@@ -532,6 +578,31 @@ export function TopNavbar({
                     tab.type !== "home"
                       ? (newTitle: string) =>
                           updateTab(tab.id, { title: newTitle })
+                      : undefined
+                  }
+                  onSplitAll={
+                    tab.type !== "home"
+                      ? () => {
+                          const splittable = [
+                            "terminal",
+                            "server_stats",
+                            "file_manager",
+                            "tunnel",
+                            "docker",
+                            "rdp",
+                            "vnc",
+                            "telnet",
+                          ];
+                          const splitIds = tabs
+                            .filter((t: TabData) =>
+                              splittable.includes(t.type),
+                            )
+                            .map((t: TabData) => t.id)
+                            .slice(0, 6);
+                          if (splitIds.length >= 2) {
+                            setSplitScreenTabs(splitIds);
+                          }
+                        }
                       : undefined
                   }
                 />

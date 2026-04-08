@@ -13,6 +13,11 @@ import type { TabContextTab } from "../../../types/index.js";
 
 export type Tab = TabContextTab;
 
+export interface TabDragToSplit {
+  draggedTabId: number;
+  isOverTerminalArea: boolean;
+}
+
 interface TabContextType {
   tabs: Tab[];
   currentTab: number | null;
@@ -21,6 +26,7 @@ interface TabContextType {
   removeTab: (tabId: number) => void;
   setCurrentTab: (tabId: number) => void;
   setSplitScreenTab: (tabId: number) => void;
+  setSplitScreenTabs: (tabIds: number[]) => void;
   getTab: (tabId: number) => Tab | undefined;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateHostConfig: (
@@ -34,6 +40,11 @@ interface TabContextType {
     },
   ) => void;
   updateTab: (tabId: number, updates: Partial<Omit<Tab, "id">>) => void;
+  tabDragToSplit: TabDragToSplit | null;
+  startTabDragToSplit: (tabId: number) => void;
+  setDragOverTerminalArea: (isOver: boolean) => void;
+  executeDragSplit: (draggedTabId: number) => void;
+  cancelTabDragToSplit: () => void;
 }
 
 const TabContext = createContext<TabContextType | undefined>(undefined);
@@ -399,6 +410,79 @@ export function TabProvider({ children }: TabProviderProps) {
     [],
   );
 
+  const setSplitScreenTabs = useCallback((tabIds: number[]) => {
+    setAllSplitScreenTab(tabIds.slice(0, 6));
+  }, []);
+
+  const [tabDragToSplit, setTabDragToSplit] =
+    useState<TabDragToSplit | null>(null);
+
+  const startTabDragToSplit = useCallback((tabId: number) => {
+    setTabDragToSplit({ draggedTabId: tabId, isOverTerminalArea: false });
+  }, []);
+
+  const setDragOverTerminalArea = useCallback((isOver: boolean) => {
+    setTabDragToSplit((prev) =>
+      prev ? { ...prev, isOverTerminalArea: isOver } : prev,
+    );
+  }, []);
+
+  const cancelTabDragToSplit = useCallback(() => {
+    setTabDragToSplit(null);
+  }, []);
+
+  const SPLITTABLE_TYPES = [
+    "terminal",
+    "server_stats",
+    "file_manager",
+    "tunnel",
+    "docker",
+    "rdp",
+    "vnc",
+    "telnet",
+  ];
+
+  const executeDragSplit = useCallback(
+    (draggedTabId: number) => {
+      const draggedTab = tabs.find((t) => t.id === draggedTabId);
+      if (!draggedTab) {
+        setTabDragToSplit(null);
+        return;
+      }
+
+      const activeTabId = currentTab;
+
+      if (allSplitScreenTab.length === 0) {
+        // Not in split mode: create 2-way split
+        if (activeTabId && activeTabId !== draggedTabId) {
+          const activeTab = tabs.find((t) => t.id === activeTabId);
+          if (activeTab && SPLITTABLE_TYPES.includes(activeTab.type)) {
+            setSplitScreenTabs([activeTabId, draggedTabId]);
+          }
+        } else {
+          // Dragged tab is the active tab — find another splittable tab
+          const other = tabs.find(
+            (t) =>
+              t.id !== draggedTabId && SPLITTABLE_TYPES.includes(t.type),
+          );
+          if (other) {
+            setCurrentTab(other.id);
+            setSplitScreenTabs([other.id, draggedTabId]);
+          }
+        }
+      } else if (
+        allSplitScreenTab.length < 6 &&
+        !allSplitScreenTab.includes(draggedTabId)
+      ) {
+        // Already split, add the dragged tab
+        setSplitScreenTabs([...allSplitScreenTab, draggedTabId]);
+      }
+
+      setTabDragToSplit(null);
+    },
+    [tabs, currentTab, allSplitScreenTab, setSplitScreenTabs],
+  );
+
   const value: TabContextType = useMemo(
     () => ({
       tabs,
@@ -408,10 +492,16 @@ export function TabProvider({ children }: TabProviderProps) {
       removeTab,
       setCurrentTab,
       setSplitScreenTab,
+      setSplitScreenTabs,
       getTab,
       reorderTabs,
       updateHostConfig,
       updateTab,
+      tabDragToSplit,
+      startTabDragToSplit,
+      setDragOverTerminalArea,
+      executeDragSplit,
+      cancelTabDragToSplit,
     }),
     [
       tabs,
@@ -420,10 +510,16 @@ export function TabProvider({ children }: TabProviderProps) {
       addTab,
       removeTab,
       setSplitScreenTab,
+      setSplitScreenTabs,
       getTab,
       reorderTabs,
       updateHostConfig,
       updateTab,
+      tabDragToSplit,
+      startTabDragToSplit,
+      setDragOverTerminalArea,
+      executeDragSplit,
+      cancelTabDragToSplit,
     ],
   );
 

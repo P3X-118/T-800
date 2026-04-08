@@ -3,7 +3,7 @@ import {
   ChevronUp,
   User2,
   HardDrive,
-  Menu,
+  ChevronLeft,
   ChevronRight,
   RotateCcw,
 } from "lucide-react";
@@ -475,7 +475,7 @@ export function LeftSidebar({
                     className="w-[28px] h-[28px]"
                     title={t("common.toggleSidebar")}
                   >
-                    <Menu className="h-4 w-4" />
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
                 </div>
               </SidebarGroupLabel>

@@ -18,6 +18,7 @@ import {
   Container as DockerIcon,
   Key,
   Pencil,
+  Columns2,
 } from "lucide-react";
 import type { SSHHost } from "@/types";
 
@@ -40,6 +41,7 @@ interface TabProps {
   isHoveredDropTarget?: boolean;
   hostConfig?: SSHHost;
   onRename?: (newTitle: string) => void;
+  onSplitAll?: () => void;
 }
 
 export function Tab({
@@ -61,6 +63,7 @@ export function Tab({
   isHoveredDropTarget = false,
   hostConfig,
   onRename,
+  onSplitAll,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{
@@ -374,6 +377,18 @@ export function Tab({
             <Pencil className="w-3.5 h-3.5" />
             Rename
           </button>
+          {onSplitAll && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                onSplitAll();
+                setContextMenu(null);
+              }}
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+              Add all tabs to Split View
+            </button>
+          )}
         </div>
       )}
       </>

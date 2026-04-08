@@ -182,7 +182,7 @@ export function LeftSidebar({
         <Sidebar>
           <SidebarHeader>
             <SidebarGroupLabel className="text-lg font-bold text-foreground">
-              T-800
+              {import.meta.env.VITE_APP_NAME || "T-800"}
               <Button
                 variant="outline"
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
