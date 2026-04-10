@@ -598,7 +598,7 @@ export function TopNavbar({
                               splittable.includes(t.type),
                             )
                             .map((t: TabData) => t.id)
-                            .slice(0, 6);
+                            .slice(0, 12);
                           if (splitIds.length >= 2) {
                             setSplitScreenTabs(splitIds);
                           }

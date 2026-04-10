@@ -10,8 +10,20 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { TabContextTab } from "../../../types/index.js";
+import {
+  type SplitLayoutNode,
+  type DropPosition,
+  defaultLayoutFromIds,
+  getLeafIds,
+  splitLeaf as splitLeafOp,
+  swapLeaves as swapLeavesOp,
+  removeLeaf as removeLeafOp,
+  insertAtRoot as insertAtRootOp,
+  pruneLayout,
+} from "./splitLayout.js";
 
 export type Tab = TabContextTab;
+export type { SplitLayoutNode, DropPosition };
 
 export interface TabDragToSplit {
   draggedTabId: number;
@@ -22,11 +34,24 @@ interface TabContextType {
   tabs: Tab[];
   currentTab: number | null;
   allSplitScreenTab: number[];
+  splitLayout: SplitLayoutNode | null;
   addTab: (tab: Omit<Tab, "id">) => number;
   removeTab: (tabId: number) => void;
   setCurrentTab: (tabId: number) => void;
   setSplitScreenTab: (tabId: number) => void;
   setSplitScreenTabs: (tabIds: number[]) => void;
+  setSplitLayout: (layout: SplitLayoutNode | null) => void;
+  splitPanelAt: (
+    targetTabId: number,
+    newTabId: number,
+    position: DropPosition,
+  ) => void;
+  addToSplitRoot: (
+    newTabId: number,
+    position: "top" | "right" | "bottom" | "left",
+  ) => void;
+  swapInSplitLayout: (aTabId: number, bTabId: number) => void;
+  removeFromSplitLayout: (tabId: number) => void;
   getTab: (tabId: number) => Tab | undefined;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateHostConfig: (
@@ -43,7 +68,10 @@ interface TabContextType {
   tabDragToSplit: TabDragToSplit | null;
   startTabDragToSplit: (tabId: number) => void;
   setDragOverTerminalArea: (isOver: boolean) => void;
-  executeDragSplit: (draggedTabId: number) => void;
+  executeDragSplit: (
+    draggedTabId: number,
+    target?: { tabId: number; position: DropPosition },
+  ) => void;
   cancelTabDragToSplit: () => void;
 }
 
@@ -132,7 +160,42 @@ export function TabProvider({ children }: TabProviderProps) {
     }
     return 1;
   });
-  const [allSplitScreenTab, setAllSplitScreenTab] = useState<number[]>([]);
+  const [splitLayout, setSplitLayoutState] =
+    useState<SplitLayoutNode | null>(null);
+  const allSplitScreenTab = useMemo(
+    () => getLeafIds(splitLayout),
+    [splitLayout],
+  );
+  const setAllSplitScreenTab = useCallback(
+    (updater: number[] | ((prev: number[]) => number[])) => {
+      setSplitLayoutState((prevLayout) => {
+        const prevIds = getLeafIds(prevLayout);
+        const nextIds =
+          typeof updater === "function"
+            ? (updater as (p: number[]) => number[])(prevIds)
+            : updater;
+        if (nextIds.length === 0) return null;
+        // If the new ID set matches the existing leaves, keep the custom layout
+        if (
+          prevLayout &&
+          nextIds.length === prevIds.length &&
+          nextIds.every((id, i) => id === prevIds[i])
+        ) {
+          return prevLayout;
+        }
+        // If the new IDs are a subset of existing leaves (only removals), prune
+        if (
+          prevLayout &&
+          nextIds.every((id) => prevIds.includes(id)) &&
+          nextIds.length < prevIds.length
+        ) {
+          return pruneLayout(prevLayout, new Set(nextIds));
+        }
+        return defaultLayoutFromIds(nextIds);
+      });
+    },
+    [],
+  );
   const [initialMaxId] = useState(() => {
     let maxId = 1;
     tabs.forEach((tab) => {
@@ -313,13 +376,17 @@ export function TabProvider({ children }: TabProviderProps) {
   };
 
   const setSplitScreenTab = (tabId: number) => {
-    setAllSplitScreenTab((prev) => {
-      if (prev.includes(tabId)) {
-        return prev.filter((id) => id !== tabId);
-      } else if (prev.length < 6) {
-        return [...prev, tabId];
+    setSplitLayoutState((prevLayout) => {
+      const prevIds = getLeafIds(prevLayout);
+      if (prevIds.includes(tabId)) {
+        const next = prevIds.filter((id) => id !== tabId);
+        if (next.length === 0) return null;
+        return pruneLayout(prevLayout, new Set(next));
+      } else if (prevIds.length < 12) {
+        const next = [...prevIds, tabId];
+        return defaultLayoutFromIds(next);
       }
-      return prev;
+      return prevLayout;
     });
   };
 
@@ -411,7 +478,114 @@ export function TabProvider({ children }: TabProviderProps) {
   );
 
   const setSplitScreenTabs = useCallback((tabIds: number[]) => {
-    setAllSplitScreenTab(tabIds.slice(0, 6));
+    const limited = tabIds.slice(0, 12);
+    setSplitLayoutState((prevLayout) => {
+      const prevIds = getLeafIds(prevLayout);
+      // If the IDs match exactly, preserve the existing custom layout
+      if (
+        prevLayout &&
+        limited.length === prevIds.length &&
+        limited.every((id, i) => id === prevIds[i])
+      ) {
+        return prevLayout;
+      }
+      // If only removing leaves, prune to keep custom arrangement
+      if (
+        prevLayout &&
+        limited.every((id) => prevIds.includes(id)) &&
+        limited.length <= prevIds.length
+      ) {
+        const pruned = pruneLayout(prevLayout, new Set(limited));
+        if (pruned !== null || limited.length === 0) return pruned;
+      }
+      return defaultLayoutFromIds(limited);
+    });
+  }, []);
+
+  const setSplitLayout = useCallback(
+    (layout: SplitLayoutNode | null) => {
+      setSplitLayoutState(layout);
+    },
+    [],
+  );
+
+  const splitPanelAt = useCallback(
+    (targetTabId: number, newTabId: number, position: DropPosition) => {
+      if (targetTabId === newTabId) return;
+      setSplitLayoutState((prevLayout) => {
+        if (!prevLayout) {
+          // No split yet — start a 2-pane layout in the requested direction
+          const newLeaf: SplitLayoutNode = { type: "leaf", tabId: newTabId };
+          const targetLeaf: SplitLayoutNode = {
+            type: "leaf",
+            tabId: targetTabId,
+          };
+          const dir =
+            position === "top" || position === "bottom"
+              ? "vertical"
+              : "horizontal";
+          const insertBefore = position === "top" || position === "left";
+          return {
+            type: "split",
+            direction: dir,
+            children: insertBefore
+              ? [newLeaf, targetLeaf]
+              : [targetLeaf, newLeaf],
+          };
+        }
+        // If the new tab is already in the layout, remove it first then re-insert
+        const cleaned = getLeafIds(prevLayout).includes(newTabId)
+          ? removeLeafOp(prevLayout, newTabId)
+          : prevLayout;
+        if (!cleaned) {
+          return defaultLayoutFromIds([newTabId]);
+        }
+        if (!getLeafIds(cleaned).includes(targetTabId)) {
+          // Target is not in layout — fall back to appending via default
+          return defaultLayoutFromIds([
+            ...getLeafIds(cleaned),
+            newTabId,
+          ]);
+        }
+        return splitLeafOp(cleaned, targetTabId, newTabId, position);
+      });
+    },
+    [],
+  );
+
+  const addToSplitRoot = useCallback(
+    (
+      newTabId: number,
+      position: "top" | "right" | "bottom" | "left",
+    ) => {
+      setSplitLayoutState((prevLayout) => {
+        // Remove the tab first if it's already in the layout, so the
+        // outer-edge drop becomes a true reposition.
+        const cleaned =
+          prevLayout && getLeafIds(prevLayout).includes(newTabId)
+            ? removeLeafOp(prevLayout, newTabId)
+            : prevLayout;
+        return insertAtRootOp(cleaned, newTabId, position);
+      });
+    },
+    [],
+  );
+
+  const swapInSplitLayout = useCallback(
+    (aTabId: number, bTabId: number) => {
+      setSplitLayoutState((prevLayout) => {
+        if (!prevLayout) return prevLayout;
+        return swapLeavesOp(prevLayout, aTabId, bTabId);
+      });
+    },
+    [],
+  );
+
+  const removeFromSplitLayout = useCallback((tabId: number) => {
+    setSplitLayoutState((prevLayout) => {
+      if (!prevLayout) return null;
+      return removeLeafOp(prevLayout, tabId);
+    });
   }, []);
 
   const [tabDragToSplit, setTabDragToSplit] =
@@ -443,9 +617,30 @@ export function TabProvider({ children }: TabProviderProps) {
   ];
 
   const executeDragSplit = useCallback(
-    (draggedTabId: number) => {
+    (
+      draggedTabId: number,
+      target?: { tabId: number; position: DropPosition },
+    ) => {
       const draggedTab = tabs.find((t) => t.id === draggedTabId);
       if (!draggedTab) {
+        setTabDragToSplit(null);
+        return;
+      }
+
+      // Targeted drop on a specific panel + position
+      if (target && target.tabId !== draggedTabId) {
+        if (target.position === "center") {
+          // Center drop = swap if both already in layout, otherwise replace target
+          if (allSplitScreenTab.includes(draggedTabId)) {
+            swapInSplitLayout(target.tabId, draggedTabId);
+          } else {
+            // Replace target with dragged tab (insert dragged then remove target)
+            splitPanelAt(target.tabId, draggedTabId, "right");
+            removeFromSplitLayout(target.tabId);
+          }
+        } else {
+          splitPanelAt(target.tabId, draggedTabId, target.position);
+        }
         setTabDragToSplit(null);
         return;
       }
@@ -471,7 +666,7 @@ export function TabProvider({ children }: TabProviderProps) {
           }
         }
       } else if (
-        allSplitScreenTab.length < 6 &&
+        allSplitScreenTab.length < 12 &&
         !allSplitScreenTab.includes(draggedTabId)
       ) {
         // Already split, add the dragged tab
@@ -480,7 +675,15 @@ export function TabProvider({ children }: TabProviderProps) {
 
       setTabDragToSplit(null);
     },
-    [tabs, currentTab, allSplitScreenTab, setSplitScreenTabs],
+    [
+      tabs,
+      currentTab,
+      allSplitScreenTab,
+      setSplitScreenTabs,
+      splitPanelAt,
+      swapInSplitLayout,
+      removeFromSplitLayout,
+    ],
   );
 
   const value: TabContextType = useMemo(
@@ -488,11 +691,17 @@ export function TabProvider({ children }: TabProviderProps) {
       tabs,
       currentTab,
       allSplitScreenTab,
+      splitLayout,
       addTab,
       removeTab,
       setCurrentTab,
       setSplitScreenTab,
       setSplitScreenTabs,
+      setSplitLayout,
+      splitPanelAt,
+      addToSplitRoot,
+      swapInSplitLayout,
+      removeFromSplitLayout,
       getTab,
       reorderTabs,
       updateHostConfig,
@@ -507,10 +716,16 @@ export function TabProvider({ children }: TabProviderProps) {
       tabs,
       currentTab,
       allSplitScreenTab,
+      splitLayout,
       addTab,
       removeTab,
       setSplitScreenTab,
       setSplitScreenTabs,
+      setSplitLayout,
+      splitPanelAt,
+      addToSplitRoot,
+      swapInSplitLayout,
+      removeFromSplitLayout,
       getTab,
       reorderTabs,
       updateHostConfig,

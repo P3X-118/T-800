@@ -224,7 +224,18 @@ export function SSHToolsSidebar({
   const commandHistoryScrollRef = React.useRef<HTMLDivElement>(null);
 
   const [splitMode, setSplitMode] = useState<
-    "none" | "2" | "3" | "4" | "5" | "6"
+    | "none"
+    | "2"
+    | "3"
+    | "4"
+    | "5"
+    | "6"
+    | "7"
+    | "8"
+    | "9"
+    | "10"
+    | "11"
+    | "12"
   >("none");
   const [splitAssignments, setSplitAssignments] = useState<Map<number, number>>(
     new Map(),
@@ -983,7 +994,19 @@ export function SSHToolsSidebar({
   };
 
   const handleSplitModeChange = (
-    mode: "none" | "2" | "3" | "4" | "5" | "6",
+    mode:
+      | "none"
+      | "2"
+      | "3"
+      | "4"
+      | "5"
+      | "6"
+      | "7"
+      | "8"
+      | "9"
+      | "10"
+      | "11"
+      | "12",
   ) => {
     setSplitMode(mode);
 
@@ -1738,12 +1761,24 @@ export function SSHToolsSidebar({
                         value={splitMode}
                         onValueChange={(value) =>
                           handleSplitModeChange(
-                            value as "none" | "2" | "3" | "4" | "5" | "6",
+                            value as
+                              | "none"
+                              | "2"
+                              | "3"
+                              | "4"
+                              | "5"
+                              | "6"
+                              | "7"
+                              | "8"
+                              | "9"
+                              | "10"
+                              | "11"
+                              | "12",
                           )
                         }
                         className="w-full"
                       >
-                        <TabsList className="w-full grid grid-cols-3 grid-rows-2 h-auto gap-2 p-2">
+                        <TabsList className="w-full grid grid-cols-4 grid-rows-4 h-auto gap-2 p-2">
                           <TabsTrigger value="none" className="h-10">
                             {t("splitScreen.none")}
                           </TabsTrigger>
@@ -1761,6 +1796,24 @@ export function SSHToolsSidebar({
                           </TabsTrigger>
                           <TabsTrigger value="6" className="h-10">
                             {t("splitScreen.sixSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="7" className="h-10">
+                            {t("splitScreen.sevenSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="8" className="h-10">
+                            {t("splitScreen.eightSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="9" className="h-10">
+                            {t("splitScreen.nineSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="10" className="h-10">
+                            {t("splitScreen.tenSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="11" className="h-10">
+                            {t("splitScreen.elevenSplit")}
+                          </TabsTrigger>
+                          <TabsTrigger value="12" className="h-10">
+                            {t("splitScreen.twelveSplit")}
                           </TabsTrigger>
                         </TabsList>
                       </Tabs>
@@ -1820,9 +1873,15 @@ export function SSHToolsSidebar({
                               className={`grid gap-2 mt-2 ${
                                 splitMode === "2"
                                   ? "grid-cols-2"
-                                  : splitMode === "5" || splitMode === "6"
-                                    ? "grid-cols-3 grid-rows-2"
-                                    : "grid-cols-2 grid-rows-2"
+                                  : splitMode === "3" || splitMode === "4"
+                                    ? "grid-cols-2 grid-rows-2"
+                                    : splitMode === "5" || splitMode === "6"
+                                      ? "grid-cols-3 grid-rows-2"
+                                      : splitMode === "7" ||
+                                          splitMode === "8" ||
+                                          splitMode === "9"
+                                        ? "grid-cols-3 grid-rows-3"
+                                        : "grid-cols-4 grid-rows-3"
                               }`}
                             >
                               {Array.from(
@@ -1838,6 +1897,19 @@ export function SSHToolsSidebar({
                                   const isHovered = dragOverCellIndex === idx;
                                   const isEmpty = !assignedTabId;
 
+                                  const n = parseInt(splitMode);
+                                  let spanClass = "";
+                                  if (n === 3 && idx === 2)
+                                    spanClass = "col-span-2";
+                                  else if (n === 7 && idx === 6)
+                                    spanClass = "col-span-3";
+                                  else if (n === 8 && idx >= 6)
+                                    spanClass = "";
+                                  else if (n === 10 && idx >= 7)
+                                    spanClass = "";
+                                  else if (n === 11 && idx >= 8)
+                                    spanClass = "";
+
                                   return (
                                     <div
                                       key={idx}
@@ -1847,9 +1919,9 @@ export function SSHToolsSidebar({
                                       onDragLeave={handleTabDragLeave}
                                       onDrop={() => handleTabDrop(idx)}
                                       className={`
-                                        relative bg-canvas border-2 rounded-md p-3 min-h-[100px]
+                                        relative bg-canvas border-2 rounded-md p-3 min-h-[80px]
                                         flex flex-col items-center justify-center transition-all
-                                        ${splitMode === "3" && idx === 2 ? "col-span-2" : ""}
+                                        ${spanClass}
                                         ${
                                           isEmpty
                                             ? "border-dashed border-edge"

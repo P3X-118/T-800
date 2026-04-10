@@ -10,6 +10,10 @@ import { TunnelManager } from "@/ui/desktop/apps/features/tunnel/TunnelManager.t
 import { DockerManager } from "@/ui/desktop/apps/features/docker/DockerManager.tsx";
 import { NetworkGraphCard } from "@/ui/desktop/apps/dashboard/cards/NetworkGraphCard";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
+import type {
+  SplitLayoutNode,
+  DropPosition,
+} from "@/ui/desktop/navigation/tabs/splitLayout.ts";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -47,6 +51,7 @@ type LayoutNode =
   | number // leaf: index into layoutTabs[]
   | { direction: "horizontal" | "vertical"; children: LayoutNode[] };
 
+// Legacy preset layouts — only used as a fallback if splitLayout is unset.
 const SPLIT_LAYOUTS: Record<number, LayoutNode> = {
   2: { direction: "horizontal", children: [0, 1] },
   3: {
@@ -74,6 +79,54 @@ const SPLIT_LAYOUTS: Record<number, LayoutNode> = {
       { direction: "horizontal", children: [3, 4, 5] },
     ],
   },
+  7: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2] },
+      { direction: "horizontal", children: [3, 4, 5] },
+      6,
+    ],
+  },
+  8: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2] },
+      { direction: "horizontal", children: [3, 4, 5] },
+      { direction: "horizontal", children: [6, 7] },
+    ],
+  },
+  9: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2] },
+      { direction: "horizontal", children: [3, 4, 5] },
+      { direction: "horizontal", children: [6, 7, 8] },
+    ],
+  },
+  10: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2, 3] },
+      { direction: "horizontal", children: [4, 5, 6] },
+      { direction: "horizontal", children: [7, 8, 9] },
+    ],
+  },
+  11: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2, 3] },
+      { direction: "horizontal", children: [4, 5, 6, 7] },
+      { direction: "horizontal", children: [8, 9, 10] },
+    ],
+  },
+  12: {
+    direction: "vertical",
+    children: [
+      { direction: "horizontal", children: [0, 1, 2, 3] },
+      { direction: "horizontal", children: [4, 5, 6, 7] },
+      { direction: "horizontal", children: [8, 9, 10, 11] },
+    ],
+  },
 };
 
 interface TerminalViewProps {
@@ -91,26 +144,42 @@ export function AppView({
     tabs,
     currentTab,
     allSplitScreenTab,
+    splitLayout,
     removeTab,
     updateTab,
     tabDragToSplit,
     setDragOverTerminalArea,
     executeDragSplit,
+    setSplitScreenTabs,
+    swapInSplitLayout,
+    addToSplitRoot,
+    cancelTabDragToSplit,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
     allSplitScreenTab: number[];
+    splitLayout: SplitLayoutNode | null;
     removeTab: (id: number) => void;
     updateTab: (
       tabId: number,
       updates: Partial<Omit<TabData, "id">>,
     ) => void;
+    setSplitScreenTabs: (tabIds: number[]) => void;
     tabDragToSplit: {
       draggedTabId: number;
       isOverTerminalArea: boolean;
     } | null;
     setDragOverTerminalArea: (isOver: boolean) => void;
-    executeDragSplit: (draggedTabId: number) => void;
+    executeDragSplit: (
+      draggedTabId: number,
+      target?: { tabId: number; position: DropPosition },
+    ) => void;
+    swapInSplitLayout: (a: number, b: number) => void;
+    addToSplitRoot: (
+      newTabId: number,
+      position: "top" | "right" | "bottom" | "left",
+    ) => void;
+    cancelTabDragToSplit: () => void;
   };
   const { state: sidebarState } = useSidebar();
   const { theme: appTheme } = useTheme();
@@ -144,6 +213,20 @@ export function AppView({
     {},
   );
   const [ready, setReady] = useState<boolean>(true);
+
+  const [panelDrag, setPanelDrag] = useState<{
+    sourceTabId: number;
+    hoverTabId: number | null;
+  } | null>(null);
+
+  const [externalDropTarget, setExternalDropTarget] = useState<{
+    tabId: number;
+    position: DropPosition;
+  } | null>(null);
+
+  const [outerDropEdge, setOuterDropEdge] = useState<
+    "top" | "right" | "bottom" | "left" | null
+  >(null);
 
   const [resetKey, setResetKey] = useState<number>(0);
   const previousStylesRef = useRef<Record<number, React.CSSProperties>>({});
@@ -392,7 +475,13 @@ export function AppView({
           const backgroundColor = themeColors.background;
 
           return (
-            <div key={t.id} style={finalStyle}>
+            <div
+              key={t.id}
+              style={{
+                ...finalStyle,
+                pointerEvents: panelDrag ? "none" : finalStyle.pointerEvents,
+              }}
+            >
               <div
                 className="absolute inset-0 rounded-md overflow-hidden"
                 style={{
@@ -502,13 +591,7 @@ export function AppView({
   };
 
   const renderSplitOverlays = () => {
-    const layoutTabs = allSplitScreenTab
-      .map((tabId) => terminalTabs.find((tab: TabData) => tab.id === tabId))
-      .filter((t): t is TabData => t !== null && t !== undefined);
-    if (allSplitScreenTab.length === 0) return null;
-
-    const layout = SPLIT_LAYOUTS[layoutTabs.length];
-    if (!layout) return null;
+    if (!splitLayout || allSplitScreenTab.length === 0) return null;
 
     const handleStyle = {
       pointerEvents: "auto",
@@ -523,8 +606,13 @@ export function AppView({
       onResize: scheduleMeasureAndFit,
     };
 
+    const firstLeafId = (() => {
+      const ids = allSplitScreenTab;
+      return ids.length > 0 ? ids[0] : null;
+    })();
+
     const renderNode = (
-      node: LayoutNode,
+      node: SplitLayoutNode,
       path: string,
       siblingCount: number,
       orderIndex: number,
@@ -532,15 +620,15 @@ export function AppView({
     ): React.ReactNode => {
       const defaultSize = Math.round(100 / siblingCount);
 
-      if (typeof node === "number") {
-        const tab = layoutTabs[node];
+      if (node.type === "leaf") {
+        const tab = terminalTabs.find((t: TabData) => t.id === node.tabId);
         if (!tab) return null;
         return (
           <ResizablePanel
             key={`panel-${tab.id}`}
             id={`panel-${tab.id}`}
             defaultSize={defaultSize}
-            minSize={20}
+            minSize={8}
             className="!overflow-hidden h-full w-full"
             order={orderIndex}
           >
@@ -550,9 +638,30 @@ export function AppView({
               }}
               className="h-full w-full flex flex-col relative"
             >
-              <div className="bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[11] relative select-none">
+              <div
+                className={`bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[31] relative select-none ${
+                  allSplitScreenTab.length > 1 ? "cursor-grab active:cursor-grabbing" : ""
+                }`}
+                draggable={allSplitScreenTab.length > 1}
+                onDragStart={(e) => {
+                  // Create opaque drag image
+                  const dragEl = document.createElement("div");
+                  dragEl.textContent = tab.title;
+                  dragEl.style.cssText =
+                    "position:fixed;top:-1000px;left:-1000px;padding:6px 16px;background:var(--color-surface,#1e1e2e);color:var(--color-foreground,#cdd6f4);border:2px solid #89b4fa;border-radius:6px;font-size:13px;white-space:nowrap;z-index:99999;opacity:0.9;";
+                  document.body.appendChild(dragEl);
+                  e.dataTransfer.setDragImage(dragEl, dragEl.offsetWidth / 2, dragEl.offsetHeight / 2);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", String(tab.id));
+                  setTimeout(() => document.body.removeChild(dragEl), 0);
+                  setPanelDrag({ sourceTabId: tab.id, hoverTabId: null });
+                }}
+                onDragEnd={() => setPanelDrag(null)}
+              >
                 {tab.title}
-                {node === 1 && <ResetButton onClick={handleReset} />}
+                {tab.id === firstLeafId && (
+                  <ResetButton onClick={handleReset} />
+                )}
               </div>
             </div>
           </ResizablePanel>
@@ -598,7 +707,7 @@ export function AppView({
           key={`container-${path}`}
           id={`container-${path}`}
           defaultSize={defaultSize}
-          minSize={20}
+          minSize={8}
           className="!overflow-hidden h-full w-full"
           order={orderIndex}
         >
@@ -609,7 +718,7 @@ export function AppView({
 
     return (
       <div className="absolute inset-0 z-[10] pointer-events-none">
-        {renderNode(layout, "", 1, 1, true)}
+        {renderNode(splitLayout, "", 1, 1, true)}
       </div>
     );
   };
@@ -681,6 +790,8 @@ export function AppView({
                 )
               ) {
                 setDragOverTerminalArea(false);
+                setExternalDropTarget(null);
+                setOuterDropEdge(null);
               }
             }
           : undefined
@@ -689,7 +800,12 @@ export function AppView({
         tabDragToSplit
           ? (e) => {
               e.preventDefault();
+              // If a directional zone handled the drop, externalDropTarget
+              // will already be null. Otherwise fall back to the legacy
+              // append-to-split behavior.
               executeDragSplit(tabDragToSplit.draggedTabId);
+              setExternalDropTarget(null);
+              setOuterDropEdge(null);
             }
           : undefined
       }
@@ -697,24 +813,467 @@ export function AppView({
       {renderTerminalsLayer()}
       {renderSplitOverlays()}
 
-      {tabDragToSplit?.isOverTerminalArea && (() => {
-        const draggedTab = tabs.find(
-          (t: TabData) => t.id === tabDragToSplit.draggedTabId,
-        );
-        const activeTab = tabs.find(
-          (t: TabData) => t.id === currentTab,
-        );
+      {panelDrag && allSplitScreenTab.length > 1 && (() => {
+        const parentRect = containerRef.current?.getBoundingClientRect();
+        if (!parentRect) return null;
+        return allSplitScreenTab
+          .filter((tabId) => tabId !== panelDrag.sourceTabId)
+          .map((tabId) => {
+            const rect = panelRects[String(tabId)];
+            if (!rect) return null;
+            const isHovered = panelDrag.hoverTabId === tabId;
+            return (
+              <div
+                key={`drop-zone-${tabId}`}
+                className={`absolute transition-colors duration-150 ${
+                  isHovered
+                    ? "bg-blue-500/15 border-2 border-dashed border-blue-500"
+                    : "bg-transparent border-2 border-transparent"
+                } rounded flex items-center justify-center`}
+                style={{
+                  top: rect.top - parentRect.top,
+                  left: rect.left - parentRect.left,
+                  width: rect.width,
+                  height: rect.height,
+                  zIndex: 60,
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (panelDrag.hoverTabId !== tabId) {
+                    setPanelDrag((prev) =>
+                      prev ? { ...prev, hoverTabId: tabId } : prev,
+                    );
+                  }
+                }}
+                onDragLeave={() => {
+                  if (panelDrag.hoverTabId === tabId) {
+                    setPanelDrag((prev) =>
+                      prev ? { ...prev, hoverTabId: null } : prev,
+                    );
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  swapInSplitLayout(panelDrag.sourceTabId, tabId);
+                  setPanelDrag(null);
+                }}
+              >
+                {isHovered && (
+                  <span className="text-blue-400 text-sm font-medium bg-surface/80 px-3 py-1 rounded">
+                    Drop to swap
+                  </span>
+                )}
+              </div>
+            );
+          });
+      })()}
+
+      {/* Source panel dim overlay */}
+      {panelDrag && (() => {
+        const parentRect = containerRef.current?.getBoundingClientRect();
+        const rect = panelRects[String(panelDrag.sourceTabId)];
+        if (!parentRect || !rect) return null;
         return (
-          <div className="absolute inset-0 z-[50] pointer-events-none flex gap-2 p-3">
-            <div className="flex-1 border-2 border-dashed border-blue-500/60 rounded-lg flex items-center justify-center bg-blue-500/10">
-              <span className="text-blue-400 text-sm font-medium">
-                {activeTab?.title || "Current"}
-              </span>
+          <div
+            className="absolute bg-black/30 rounded pointer-events-none"
+            style={{
+              top: rect.top - parentRect.top,
+              left: rect.left - parentRect.left,
+              width: rect.width,
+              height: rect.height,
+              zIndex: 60,
+            }}
+          />
+        );
+      })()}
+
+      {tabDragToSplit?.isOverTerminalArea && (() => {
+        const parentRect = containerRef.current?.getBoundingClientRect();
+        if (!parentRect) return null;
+
+        // When not in split mode yet, the active tab is the only "panel"
+        const targetIds =
+          allSplitScreenTab.length > 0
+            ? allSplitScreenTab
+            : currentTab
+              ? [currentTab]
+              : [];
+
+        if (targetIds.length === 0) return null;
+
+        return (
+          <div className="absolute inset-0 z-[55] pointer-events-none">
+            {targetIds.map((tabId) => {
+              if (tabId === tabDragToSplit.draggedTabId) return null;
+
+              let rect: DOMRect | null = null;
+              if (allSplitScreenTab.length === 0) {
+                // Use container bounds for the single active panel
+                rect = parentRect;
+              } else {
+                rect = panelRects[String(tabId)] ?? null;
+              }
+              if (!rect) return null;
+
+              const isSamePanel = (pos: DropPosition) =>
+                externalDropTarget?.tabId === tabId &&
+                externalDropTarget.position === pos;
+
+              const top =
+                rect === parentRect ? 0 : rect.top - parentRect.top;
+              const left =
+                rect === parentRect ? 0 : rect.left - parentRect.left;
+              const width = rect.width;
+              const height = rect.height;
+
+              const zoneBase =
+                "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
+              const zoneInactive =
+                "bg-blue-500/5 border border-dashed border-blue-500/30";
+              const zoneActive =
+                "bg-blue-500/30 border-2 border-blue-400";
+
+              const handleEnter = (pos: DropPosition) =>
+                setExternalDropTarget({ tabId, position: pos });
+              const handleLeave = (pos: DropPosition) => {
+                if (
+                  externalDropTarget?.tabId === tabId &&
+                  externalDropTarget.position === pos
+                ) {
+                  setExternalDropTarget(null);
+                }
+              };
+              const handleDrop = (pos: DropPosition) => {
+                executeDragSplit(tabDragToSplit.draggedTabId, {
+                  tabId,
+                  position: pos,
+                });
+                setExternalDropTarget(null);
+              };
+
+              const edgeRatio = 0.25; // top/bottom/left/right zones
+              const centerWidth = width * (1 - 2 * edgeRatio);
+              const centerHeight = height * (1 - 2 * edgeRatio);
+              const edgeH = height * edgeRatio;
+              const edgeW = width * edgeRatio;
+
+              return (
+                <React.Fragment key={`drop-${tabId}`}>
+                  {/* Outline of target panel */}
+                  <div
+                    className="absolute pointer-events-none border-2 border-dashed border-blue-400/40 rounded"
+                    style={{ top, left, width, height, zIndex: 55 }}
+                  />
+                  {/* TOP */}
+                  <div
+                    className={`${zoneBase} ${
+                      isSamePanel("top") ? zoneActive : zoneInactive
+                    } rounded-t`}
+                    style={{
+                      top,
+                      left,
+                      width,
+                      height: edgeH,
+                      zIndex: 56,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      handleEnter("top");
+                    }}
+                    onDragLeave={() => handleLeave("top")}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDrop("top");
+                    }}
+                  >
+                    {isSamePanel("top") && (
+                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
+                        Split top
+                      </span>
+                    )}
+                  </div>
+                  {/* BOTTOM */}
+                  <div
+                    className={`${zoneBase} ${
+                      isSamePanel("bottom") ? zoneActive : zoneInactive
+                    } rounded-b`}
+                    style={{
+                      top: top + height - edgeH,
+                      left,
+                      width,
+                      height: edgeH,
+                      zIndex: 56,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      handleEnter("bottom");
+                    }}
+                    onDragLeave={() => handleLeave("bottom")}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDrop("bottom");
+                    }}
+                  >
+                    {isSamePanel("bottom") && (
+                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
+                        Split bottom
+                      </span>
+                    )}
+                  </div>
+                  {/* LEFT */}
+                  <div
+                    className={`${zoneBase} ${
+                      isSamePanel("left") ? zoneActive : zoneInactive
+                    }`}
+                    style={{
+                      top: top + edgeH,
+                      left,
+                      width: edgeW,
+                      height: centerHeight,
+                      zIndex: 56,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      handleEnter("left");
+                    }}
+                    onDragLeave={() => handleLeave("left")}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDrop("left");
+                    }}
+                  >
+                    {isSamePanel("left") && (
+                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
+                        Split left
+                      </span>
+                    )}
+                  </div>
+                  {/* RIGHT */}
+                  <div
+                    className={`${zoneBase} ${
+                      isSamePanel("right") ? zoneActive : zoneInactive
+                    }`}
+                    style={{
+                      top: top + edgeH,
+                      left: left + width - edgeW,
+                      width: edgeW,
+                      height: centerHeight,
+                      zIndex: 56,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      handleEnter("right");
+                    }}
+                    onDragLeave={() => handleLeave("right")}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDrop("right");
+                    }}
+                  >
+                    {isSamePanel("right") && (
+                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
+                        Split right
+                      </span>
+                    )}
+                  </div>
+                  {/* CENTER (replace/swap) */}
+                  <div
+                    className={`${zoneBase} ${
+                      isSamePanel("center") ? zoneActive : zoneInactive
+                    }`}
+                    style={{
+                      top: top + edgeH,
+                      left: left + edgeW,
+                      width: centerWidth,
+                      height: centerHeight,
+                      zIndex: 56,
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      handleEnter("center");
+                    }}
+                    onDragLeave={() => handleLeave("center")}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDrop("center");
+                    }}
+                  >
+                    {isSamePanel("center") && (
+                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
+                        Replace
+                      </span>
+                    )}
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        );
+      })()}
+
+      {/* Outer drop zones — create new outermost rows/columns */}
+      {tabDragToSplit?.isOverTerminalArea && (() => {
+        const OUTER_THICKNESS = 28; // px strip along each container edge
+
+        const isActive = (edge: "top" | "right" | "bottom" | "left") =>
+          outerDropEdge === edge;
+
+        const baseClass =
+          "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
+        const inactiveClass =
+          "bg-emerald-500/10 border border-dashed border-emerald-400/50";
+        const activeClass =
+          "bg-emerald-500/40 border-2 border-emerald-300";
+
+        const handleEnter = (edge: "top" | "right" | "bottom" | "left") =>
+          setOuterDropEdge(edge);
+        const handleLeave = (edge: "top" | "right" | "bottom" | "left") => {
+          if (outerDropEdge === edge) setOuterDropEdge(null);
+        };
+        const handleDrop = (edge: "top" | "right" | "bottom" | "left") => {
+          addToSplitRoot(tabDragToSplit.draggedTabId, edge);
+          setOuterDropEdge(null);
+          setExternalDropTarget(null);
+          cancelTabDragToSplit();
+        };
+
+        return (
+          <div className="absolute inset-0 z-[58] pointer-events-none">
+            {/* TOP edge — new row at top */}
+            <div
+              className={`${baseClass} ${
+                isActive("top") ? activeClass : inactiveClass
+              }`}
+              style={{
+                top: 0,
+                left: 0,
+                right: 0,
+                height: OUTER_THICKNESS,
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                handleEnter("top");
+              }}
+              onDragLeave={() => handleLeave("top")}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDrop("top");
+              }}
+            >
+              {isActive("top") && (
+                <span className="text-emerald-50 text-xs font-semibold bg-emerald-700/80 px-2 py-0.5 rounded">
+                  + New row (top)
+                </span>
+              )}
             </div>
-            <div className="flex-1 border-2 border-dashed border-green-500/60 rounded-lg flex items-center justify-center bg-green-500/10">
-              <span className="text-green-400 text-sm font-medium">
-                {draggedTab?.title || "Dragged"}
-              </span>
+            {/* BOTTOM edge — new row at bottom */}
+            <div
+              className={`${baseClass} ${
+                isActive("bottom") ? activeClass : inactiveClass
+              }`}
+              style={{
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: OUTER_THICKNESS,
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                handleEnter("bottom");
+              }}
+              onDragLeave={() => handleLeave("bottom")}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDrop("bottom");
+              }}
+            >
+              {isActive("bottom") && (
+                <span className="text-emerald-50 text-xs font-semibold bg-emerald-700/80 px-2 py-0.5 rounded">
+                  + New row (bottom)
+                </span>
+              )}
+            </div>
+            {/* LEFT edge — new column at left */}
+            <div
+              className={`${baseClass} ${
+                isActive("left") ? activeClass : inactiveClass
+              }`}
+              style={{
+                top: OUTER_THICKNESS,
+                bottom: OUTER_THICKNESS,
+                left: 0,
+                width: OUTER_THICKNESS,
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                handleEnter("left");
+              }}
+              onDragLeave={() => handleLeave("left")}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDrop("left");
+              }}
+            >
+              {isActive("left") && (
+                <span className="text-emerald-50 text-[10px] font-semibold bg-emerald-700/80 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                  + New column
+                </span>
+              )}
+            </div>
+            {/* RIGHT edge — new column at right */}
+            <div
+              className={`${baseClass} ${
+                isActive("right") ? activeClass : inactiveClass
+              }`}
+              style={{
+                top: OUTER_THICKNESS,
+                bottom: OUTER_THICKNESS,
+                right: 0,
+                width: OUTER_THICKNESS,
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.dataTransfer.dropEffect = "move";
+                handleEnter("right");
+              }}
+              onDragLeave={() => handleLeave("right")}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDrop("right");
+              }}
+            >
+              {isActive("right") && (
+                <span className="text-emerald-50 text-[10px] font-semibold bg-emerald-700/80 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                  + New column
+                </span>
+              )}
             </div>
           </div>
         );
