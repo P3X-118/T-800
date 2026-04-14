@@ -1212,6 +1212,105 @@ export async function bulkImportSSHHosts(
   }
 }
 
+export interface PendingKeyHost {
+  identityFile: string;
+  user: string;
+  hostIds: number[];
+  hostNames: string[];
+}
+
+export interface SSHConfigImportResult {
+  message: string;
+  success: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+  proxyJumpResolved: number;
+  proxyJumpFailed: number;
+  credentialsCreated: number;
+  credentialErrors: string[];
+  configPath: string;
+  pendingKeyHosts: PendingKeyHost[];
+}
+
+/**
+ * Import hosts from a user-uploaded SSH config file. The config text and
+ * any key file contents are sent in the request body — nothing is read
+ * from the server's filesystem.
+ */
+export async function importSSHConfigFromUpload(
+  configText: string,
+  overwrite = false,
+  keys: Record<string, string> = {},
+): Promise<SSHConfigImportResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config", {
+      configText,
+      overwrite,
+      keys,
+      sourceType: "ssh",
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "import uploaded SSH config");
+  }
+}
+
+/**
+ * Import hosts from a user-uploaded Ansible inventory (INI format). Same
+ * flow as the SSH config import — the inventory text and any referenced
+ * private key file contents are sent in the request body, and each host's
+ * Ansible group name is used as the folder.
+ */
+export async function importAnsibleInventoryFromUpload(
+  configText: string,
+  overwrite = false,
+  keys: Record<string, string> = {},
+): Promise<SSHConfigImportResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config", {
+      configText,
+      overwrite,
+      keys,
+      sourceType: "ansible",
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "import uploaded Ansible inventory");
+  }
+}
+
+export interface ProvideKeysResult {
+  credentialsCreated: number;
+  hostsUpdated: number;
+  errors: string[];
+}
+
+/**
+ * Companion to importSSHConfigFromDisk: supplies user-provided key
+ * contents for hosts that were imported with no auth (because the
+ * IdentityFile was unreadable).
+ */
+export async function provideSSHConfigKeys(
+  keys: Array<{
+    identityFile: string;
+    user: string;
+    contents: string;
+    passphrase?: string;
+    hostIds: number[];
+  }>,
+): Promise<ProvideKeysResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config/provide-keys", {
+      keys,
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "supply ssh-config keys");
+  }
+}
+
 export async function bulkUpdateSSHHosts(
   hostIds: number[],
   updates: Record<string, unknown>,

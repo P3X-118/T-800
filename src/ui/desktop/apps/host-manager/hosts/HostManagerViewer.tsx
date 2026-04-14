@@ -98,6 +98,8 @@ import type {
 import { DEFAULT_STATS_CONFIG } from "@/types/stats-widgets.ts";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import { FolderEditDialog } from "@/ui/desktop/apps/host-manager/dialogs/FolderEditDialog.tsx";
+import { SSHConfigUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/SSHConfigUploadDialog.tsx";
+import { AnsibleInventoryUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/AnsibleInventoryUploadDialog.tsx";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 
 const INITIAL_HOSTS_PER_FOLDER = 12;
@@ -114,6 +116,9 @@ export function HostManagerViewer({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [sshConfigUploadOpen, setSSHConfigUploadOpen] = useState(false);
+  const [ansibleInventoryUploadOpen, setAnsibleInventoryUploadOpen] =
+    useState(false);
   const overwriteRef = useRef(false);
   const [draggedHost, setDraggedHost] = useState<SSHHost | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -1157,6 +1162,18 @@ export function HostManagerViewer({
                 >
                   {t("hosts.importOverwriteExisting")}
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setSSHConfigUploadOpen(true)}
+                  disabled={importing}
+                >
+                  Import SSH Config
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setAnsibleInventoryUploadOpen(true)}
+                  disabled={importing}
+                >
+                  Import Ansible Inventory
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -2195,6 +2212,24 @@ export function HostManagerViewer({
             }}
           />
         )}
+
+        <SSHConfigUploadDialog
+          open={sshConfigUploadOpen}
+          onOpenChange={setSSHConfigUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
+
+        <AnsibleInventoryUploadDialog
+          open={ansibleInventoryUploadOpen}
+          onOpenChange={setAnsibleInventoryUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
 
         {selectionMode && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-popover border border-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-2 max-w-[90vw]">
