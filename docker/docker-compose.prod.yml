@@ -17,14 +17,17 @@ name: t800-prod
 
 services:
   t800:
-    image: legitservices/t-800:release-2.0.0-01
+    image: legitservices/t-800:release-2.0.0-02
     container_name: t800-prod
     restart: unless-stopped
     ports:
-      # Bound to the production host's mesh IP only, so the upstream
-      # Caddy at 169.254.0.36 reaches it but no other interface is
-      # exposed.
-      - "169.254.0.123:8080:8080"
+      # Bound to all host interfaces so Caddy can reach it over
+      # whichever network it happens to use. :8080 on this host is
+      # already claimed by another service, so we expose the
+      # container's :8080 on host :8181. Dev t800 uses :8180; prod
+      # uses :8181. Upstream access should still be gated at the
+      # network / firewall level.
+      - "8181:8080"
     volumes:
       - t800-prod-data:/app/data
     environment:
