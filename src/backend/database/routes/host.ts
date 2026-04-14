@@ -28,6 +28,9 @@ import {
 } from "drizzle-orm";
 import type { Request, Response } from "express";
 import multer from "multer";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { sshLogger, databaseLogger } from "../../utils/logger.js";
 import { SimpleDBOps } from "../../utils/simple-db-ops.js";
 import { AuthManager } from "../../utils/auth-manager.js";
@@ -36,6 +39,8 @@ import { DataCrypto } from "../../utils/data-crypto.js";
 import { SystemCrypto } from "../../utils/system-crypto.js";
 import { DatabaseSaveTrigger } from "../db/index.js";
 import { parseSSHKey } from "../../utils/ssh-key-utils.js";
+import { parseSSHConfig } from "../../utils/ssh-config-parser.js";
+import { parseAnsibleInventory } from "../../utils/ansible-inventory-parser.js";
 
 const router = express.Router();
 
@@ -3325,6 +3330,642 @@ router.post(
       skipped: results.skipped,
       failed: results.failed,
       errors: results.errors,
+    });
+  },
+);
+
+/**
+ * @openapi
+ * /ssh/import-ssh-config:
+ *   post:
+ *     summary: Import hosts from the server's ~/.ssh/config
+ *     description: |
+ *       Reads the ssh_config file from the home directory of the user
+ *       running the backend process, parses each Host entry, reads any
+ *       referenced IdentityFile from disk, creates one credential per
+ *       unique (user, identityFile) pair, then inserts the hosts.
+ *
+ *       In a self-hosted single-user deployment the backend's home
+ *       directory is the operator's home directory, so this is a true
+ *       one-click import. The endpoint requires authentication.
+ *     tags:
+ *       - Hosts
+ */
+router.post(
+  "/import-ssh-config",
+  authenticateJWT,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!isNonEmptyString(userId)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const overwrite = req.body?.overwrite === true;
+    const sourceType: "ssh" | "ansible" =
+      req.body?.sourceType === "ansible" ? "ansible" : "ssh";
+    const defaultFolder = sourceType === "ansible" ? "Ansible" : "Imported";
+    const defaultTags =
+      sourceType === "ansible" ? "ansible-inventory" : "ssh-config";
+
+    // Cap how much payload we accept to keep memory bounded.
+    const MAX_CONFIG_BYTES = 2 * 1024 * 1024; // 2 MB
+    const MAX_KEYS = 200;
+    const MAX_KEY_BYTES = 64 * 1024; // 64 KB per private key
+
+    // Strictly validate the uploaded keys shape. Uses Object.create(null)
+    // to avoid any prototype-pollution surface from sending `__proto__` or
+    // `constructor` keys.
+    const uploadedKeys: Record<string, string> = Object.create(null);
+    const rawKeys = req.body?.keys;
+    if (rawKeys && typeof rawKeys === "object" && !Array.isArray(rawKeys)) {
+      const entriesArr = Object.entries(rawKeys as Record<string, unknown>);
+      if (entriesArr.length > MAX_KEYS) {
+        return res
+          .status(400)
+          .json({ error: `Too many keys uploaded (max ${MAX_KEYS})` });
+      }
+      for (const [k, v] of entriesArr) {
+        if (k === "__proto__" || k === "constructor" || k === "prototype") {
+          continue;
+        }
+        if (typeof k !== "string" || typeof v !== "string") continue;
+        if (v.length > MAX_KEY_BYTES) continue;
+        uploadedKeys[k] = v;
+      }
+    }
+
+    // Accept config text directly from the client (uploaded from user's
+    // machine). Falls back to reading from the server's filesystem for
+    // backwards compatibility, but the client-upload path is preferred.
+    let configText: string;
+
+    if (req.body?.configText && typeof req.body.configText === "string") {
+      if (req.body.configText.length > MAX_CONFIG_BYTES) {
+        return res.status(413).json({
+          error: `Uploaded config exceeds ${MAX_CONFIG_BYTES / 1024 / 1024} MB`,
+        });
+      }
+      configText = req.body.configText;
+    } else {
+      const homeDir = os.homedir();
+      const configPath = path.join(homeDir, ".ssh", "config");
+      try {
+        configText = fs.readFileSync(configPath, "utf8");
+      } catch {
+        return res.status(404).json({
+          error: "Could not read SSH config from server filesystem",
+        });
+      }
+    }
+
+    let entries;
+    try {
+      entries =
+        sourceType === "ansible"
+          ? parseAnsibleInventory(configText)
+          : parseSSHConfig(configText);
+    } catch {
+      return res.status(400).json({
+        error: `Failed to parse ${sourceType === "ansible" ? "Ansible inventory" : "ssh_config"}`,
+      });
+    }
+
+    if (entries.length === 0) {
+      return res.json({
+        message: "No importable hosts found in ssh_config",
+        success: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+        proxyJumpResolved: 0,
+        proxyJumpFailed: 0,
+      });
+    }
+
+    const homeDir = os.homedir();
+    const sshRoot = path.resolve(path.join(homeDir, ".ssh"));
+
+    // Resolve a possibly-tilde-prefixed path against the backend's home
+    // dir AND verify it stays inside ~/.ssh/. Returns null if the
+    // resolved path escapes the root (e.g. `../../etc/passwd`) or is an
+    // absolute path outside ~/.ssh/.
+    const safeResolveKeyPath = (p: string): string | null => {
+      let expanded = p;
+      if (p.startsWith("~/") || p === "~") {
+        expanded = path.join(homeDir, p.slice(1));
+      } else if (!path.isAbsolute(p)) {
+        expanded = path.join(sshRoot, p);
+      }
+      const resolved = path.resolve(expanded);
+      const rel = path.relative(sshRoot, resolved);
+      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+        return resolved;
+      }
+      return null;
+    };
+
+    // Step 1: For each unique (user, identityFile) pair, try to resolve the
+    // key. We first check if the user uploaded the key contents in the
+    // request body, then fall back to reading from the server's filesystem.
+    const credentialIdByPairKey = new Map<string, number>();
+    const pairKey = (user: string, idFile: string) => `${user}::${idFile}`;
+    const credentialErrors: string[] = [];
+    const unreadablePairs = new Set<string>();
+
+    for (const entry of entries) {
+      if (!entry.identityFile) continue;
+      const user = entry.user || "default";
+      const key = pairKey(user, entry.identityFile);
+      if (credentialIdByPairKey.has(key)) continue;
+      if (unreadablePairs.has(key)) continue;
+
+      // Check uploaded keys first (keyed by the original IdentityFile path)
+      let keyContents: string | undefined =
+        uploadedKeys[entry.identityFile] ||
+        uploadedKeys[path.basename(entry.identityFile)];
+
+      if (!keyContents) {
+        // Fall back to reading from the server's filesystem, but only if
+        // the path stays inside ~/.ssh/. Blocks path traversal attempts
+        // like `IdentityFile ../../etc/passwd`.
+        const resolvedKeyPath = safeResolveKeyPath(entry.identityFile);
+        if (!resolvedKeyPath) {
+          unreadablePairs.add(key);
+          continue;
+        }
+        try {
+          keyContents = fs.readFileSync(resolvedKeyPath, "utf8");
+        } catch {
+          unreadablePairs.add(key);
+          continue;
+        }
+      }
+
+      if (!keyContents || !keyContents.includes("-----BEGIN")) {
+        unreadablePairs.add(key);
+        continue;
+      }
+
+      try {
+        const keyInfo = parseSSHKey(
+          keyContents,
+          entry.identityFilePassphrase || null,
+        );
+
+        const credentialData: Record<string, unknown> = {
+          userId,
+          name: `${user} – ${path.basename(entry.identityFile)}`,
+          description: `Imported from ssh_config (${entry.identityFile})`,
+          folder: null,
+          tags: "ssh-config",
+          authType: "key",
+          username: user,
+          password: null,
+          key: keyContents,
+          privateKey: keyInfo?.privateKey || keyContents,
+          publicKey: keyInfo?.publicKey || null,
+          keyPassword: entry.identityFilePassphrase || null,
+          keyType: null,
+          detectedKeyType: keyInfo?.keyType || null,
+          usageCount: 0,
+          lastUsed: null,
+        };
+
+        const created = (await SimpleDBOps.insert(
+          sshCredentials,
+          "ssh_credentials",
+          credentialData,
+          userId,
+        )) as { id: number };
+        credentialIdByPairKey.set(key, created.id);
+      } catch (err) {
+        sshLogger.error("Failed to create credential during import", err, {
+          operation: "ssh_config_import_credential",
+          host: entry.name,
+        });
+        credentialErrors.push(
+          `${entry.name}: failed to create credential`,
+        );
+        unreadablePairs.add(key);
+      }
+    }
+
+    // Step 2: Look up existing hosts so we can skip duplicates by ip:port:user.
+    const existingHosts = await SimpleDBOps.select(
+      db.select().from(hosts).where(eq(hosts.userId, userId)),
+      "ssh_data",
+      userId,
+    );
+    const existingByLookup = new Map<string, { id: number; name: string }>();
+    for (const h of existingHosts) {
+      const k = `${h.ip}:${h.port}:${h.username}`;
+      existingByLookup.set(k, { id: h.id as number, name: h.name as string });
+    }
+
+    // Step 3: Insert hosts. Track aliases → new IDs for ProxyJump pass.
+    const importResults = {
+      success: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
+    const aliasToHostId = new Map<string, number>();
+    // Hosts that ended up with authType "none" because we couldn't read
+    // their key. Grouped by (user, identityFile) so the frontend can prompt
+    // the user once per unique key.
+    const pendingKeysByPair = new Map<
+      string,
+      {
+        identityFile: string;
+        user: string;
+        hostIds: number[];
+        hostNames: string[];
+      }
+    >();
+
+    // Pre-populate alias map with already-existing hosts so ProxyJump can
+    // resolve to entries the user already had.
+    for (const h of existingHosts) {
+      if (h.name) aliasToHostId.set(h.name as string, h.id as number);
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      try {
+        if (!entry.hostname) {
+          importResults.failed++;
+          importResults.errors.push(`${entry.name}: missing HostName`);
+          continue;
+        }
+        const user = entry.user || "root";
+        const credId = entry.identityFile
+          ? credentialIdByPairKey.get(pairKey(user, entry.identityFile))
+          : undefined;
+
+        const lookup = `${entry.hostname}:${entry.port}:${user}`;
+        if (existingByLookup.has(lookup)) {
+          const existing = existingByLookup.get(lookup)!;
+          aliasToHostId.set(entry.name, existing.id);
+          if (overwrite) {
+            // Update existing host with refreshed data from the config
+            try {
+              const updateData: Record<string, unknown> = {
+                name: entry.name,
+                updatedAt: new Date().toISOString(),
+              };
+              if (credId) {
+                updateData.authType = "credential";
+                updateData.credentialId = credId;
+              }
+              await SimpleDBOps.update(
+                hosts,
+                "ssh_data",
+                eq(hosts.id, existing.id),
+                updateData,
+                userId,
+              );
+              importResults.updated++;
+            } catch {
+              importResults.failed++;
+              importResults.errors.push(
+                `${entry.name}: failed to update existing host`,
+              );
+            }
+            // Track pending keys for overwritten hosts too
+            if (entry.identityFile && !credId) {
+              const pk = pairKey(user, entry.identityFile);
+              let bucket = pendingKeysByPair.get(pk);
+              if (!bucket) {
+                bucket = {
+                  identityFile: entry.identityFile,
+                  user,
+                  hostIds: [],
+                  hostNames: [],
+                };
+                pendingKeysByPair.set(pk, bucket);
+              }
+              bucket.hostIds.push(existing.id);
+              bucket.hostNames.push(entry.name);
+            }
+          } else {
+            importResults.skipped++;
+          }
+          continue;
+        }
+
+        const entryFolder = entry.extras?._folder || defaultFolder;
+        const entryTags = entry.extras?._tags || defaultTags;
+        const sshDataObj: Record<string, unknown> = {
+          userId,
+          connectionType: "ssh",
+          name: entry.name,
+          ip: entry.hostname,
+          port: entry.port,
+          username: user,
+          folder: entryFolder,
+          tags: entryTags,
+          pin: 0,
+          authType: credId ? "credential" : "none",
+          credentialId: credId || null,
+          password: null,
+          key: null,
+          keyPassword: null,
+          keyType: null,
+          domain: null,
+          security: null,
+          ignoreCert: 0,
+          guacamoleConfig: null,
+          enableTerminal: 1,
+          enableTunnel: 1,
+          enableFileManager: 1,
+          enableDocker: 0,
+          showTerminalInSidebar: 1,
+          showFileManagerInSidebar: 1,
+          showTunnelInSidebar: 1,
+          showDockerInSidebar: 0,
+          showServerStatsInSidebar: 1,
+          defaultPath: null,
+          forceKeyboardInteractive: 0,
+          tunnelConnections: (() => {
+            const tunnels: Array<Record<string, unknown>> = [];
+            for (const lf of entry.localForwards) {
+              tunnels.push({
+                tunnelType: "local",
+                sourcePort: lf.bindPort,
+                endpointHost: lf.targetHost,
+                endpointPort: lf.targetPort,
+                maxRetries: 3,
+                retryInterval: 5000,
+                autoStart: false,
+              });
+            }
+            for (const rf of entry.remoteForwards) {
+              tunnels.push({
+                tunnelType: "remote",
+                sourcePort: rf.bindPort,
+                endpointHost: rf.targetHost,
+                endpointPort: rf.targetPort,
+                maxRetries: 3,
+                retryInterval: 5000,
+                autoStart: false,
+              });
+            }
+            return tunnels.length > 0 ? JSON.stringify(tunnels) : null;
+          })(),
+          jumpHosts: null,
+          quickActions: null,
+          statsConfig: null,
+          terminalConfig: null,
+          notes: (() => {
+            const parts: string[] = [];
+            if (entry.dynamicForwards.length > 0) {
+              parts.push(
+                `DynamicForward: ${entry.dynamicForwards.join(", ")}`,
+              );
+            }
+            if (entry.proxyCommand) {
+              parts.push(`ProxyCommand: ${entry.proxyCommand}`);
+            }
+            if (entry.forwardAgent) {
+              parts.push("ForwardAgent: yes");
+            }
+            return parts.length > 0 ? parts.join("\n") : null;
+          })(),
+          useSocks5: 0,
+          socks5Host: null,
+          socks5Port: null,
+          socks5Username: null,
+          socks5Password: null,
+          socks5ProxyChain: null,
+          overrideCredentialUsername: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const inserted = (await SimpleDBOps.insert(
+          hosts,
+          "ssh_data",
+          sshDataObj,
+          userId,
+        )) as { id: number };
+        aliasToHostId.set(entry.name, inserted.id);
+        importResults.success++;
+
+        // If this entry referenced an IdentityFile but we couldn't get the
+        // key, queue it for the follow-up "provide keys" step.
+        if (entry.identityFile && !credId) {
+          const pk = pairKey(user, entry.identityFile);
+          let bucket = pendingKeysByPair.get(pk);
+          if (!bucket) {
+            bucket = {
+              identityFile: entry.identityFile,
+              user,
+              hostIds: [],
+              hostNames: [],
+            };
+            pendingKeysByPair.set(pk, bucket);
+          }
+          bucket.hostIds.push(inserted.id);
+          bucket.hostNames.push(entry.name);
+        }
+      } catch (err) {
+        sshLogger.error("Failed to insert host during import", err, {
+          operation: "ssh_config_import_host",
+          host: entry.name,
+        });
+        importResults.failed++;
+        importResults.errors.push(`${entry.name}: insert failed`);
+      }
+    }
+
+    // Step 4: Resolve ProxyJump in a second pass.
+    let proxyJumpResolved = 0;
+    let proxyJumpFailed = 0;
+    for (const entry of entries) {
+      if (!entry.proxyJump || entry.proxyJump.length === 0) continue;
+      const targetId = aliasToHostId.get(entry.name);
+      if (!targetId) continue;
+
+      const jumpHostIds: number[] = [];
+      let allResolved = true;
+      for (const jumpAlias of entry.proxyJump) {
+        // ProxyJump tokens may be `user@host:port`. Strip user@ and :port.
+        const hostToken = jumpAlias.includes("@")
+          ? jumpAlias.split("@")[1]
+          : jumpAlias;
+        const cleaned = hostToken.split(":")[0];
+        const id = aliasToHostId.get(cleaned);
+        if (id) {
+          jumpHostIds.push(id);
+        } else {
+          allResolved = false;
+          break;
+        }
+      }
+      if (!allResolved || jumpHostIds.length === 0) {
+        proxyJumpFailed++;
+        continue;
+      }
+
+      try {
+        await SimpleDBOps.update(
+          hosts,
+          "ssh_data",
+          eq(hosts.id, targetId),
+          {
+            jumpHosts: JSON.stringify(
+              jumpHostIds.map((hostId) => ({ hostId })),
+            ),
+            updatedAt: new Date().toISOString(),
+          },
+          userId,
+        );
+        proxyJumpResolved++;
+      } catch {
+        proxyJumpFailed++;
+      }
+    }
+
+    res.json({
+      message: `Imported ${importResults.success} hosts (${importResults.updated} updated, ${importResults.skipped} skipped, ${importResults.failed} failed)`,
+      ...importResults,
+      proxyJumpResolved,
+      proxyJumpFailed,
+      credentialsCreated: credentialIdByPairKey.size,
+      credentialErrors,
+      configPath: req.body?.configText
+        ? "uploaded"
+        : path.join(homeDir, ".ssh", "config"),
+      sourceType,
+      pendingKeyHosts: Array.from(pendingKeysByPair.values()),
+    });
+  },
+);
+
+/**
+ * @openapi
+ * /ssh/import-ssh-config/provide-keys:
+ *   post:
+ *     summary: Supply key contents for hosts that were imported with no auth
+ *     description: |
+ *       Companion endpoint to /import-ssh-config. Takes user-provided key
+ *       contents for hosts where the original IdentityFile couldn't be read,
+ *       creates one credential per unique (user, identityFile) pair, and
+ *       updates the affected hosts to use the new credential.
+ *     tags:
+ *       - Hosts
+ */
+router.post(
+  "/import-ssh-config/provide-keys",
+  authenticateJWT,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!isNonEmptyString(userId)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const body = req.body as {
+      keys?: Array<{
+        identityFile: string;
+        user: string;
+        contents: string;
+        passphrase?: string;
+        hostIds: number[];
+      }>;
+    };
+
+    if (!Array.isArray(body.keys) || body.keys.length === 0) {
+      return res.status(400).json({ error: "No keys provided" });
+    }
+
+    let credentialsCreated = 0;
+    let hostsUpdated = 0;
+    const errors: string[] = [];
+
+    for (const entry of body.keys) {
+      if (
+        !isNonEmptyString(entry.identityFile) ||
+        !isNonEmptyString(entry.user) ||
+        !isNonEmptyString(entry.contents) ||
+        !Array.isArray(entry.hostIds) ||
+        entry.hostIds.length === 0
+      ) {
+        errors.push(`Invalid key entry for ${entry?.identityFile || "unknown"}`);
+        continue;
+      }
+      if (!entry.contents.includes("-----BEGIN")) {
+        errors.push(
+          `${entry.identityFile}: contents do not look like a PEM private key`,
+        );
+        continue;
+      }
+
+      try {
+        const keyInfo = parseSSHKey(entry.contents, entry.passphrase || null);
+
+        const credentialData: Record<string, unknown> = {
+          userId,
+          name: `${entry.user} – ${path.basename(entry.identityFile)}`,
+          description: `Imported from ssh_config (${entry.identityFile})`,
+          folder: null,
+          tags: "ssh-config",
+          authType: "key",
+          username: entry.user,
+          password: null,
+          key: entry.contents,
+          privateKey: keyInfo?.privateKey || entry.contents,
+          publicKey: keyInfo?.publicKey || null,
+          keyPassword: entry.passphrase || null,
+          keyType: null,
+          detectedKeyType: keyInfo?.keyType || null,
+          usageCount: 0,
+          lastUsed: null,
+        };
+
+        const created = (await SimpleDBOps.insert(
+          sshCredentials,
+          "ssh_credentials",
+          credentialData,
+          userId,
+        )) as { id: number };
+        credentialsCreated++;
+
+        for (const hostId of entry.hostIds) {
+          try {
+            await SimpleDBOps.update(
+              hosts,
+              "ssh_data",
+              and(eq(hosts.id, hostId), eq(hosts.userId, userId)),
+              {
+                authType: "credential",
+                credentialId: created.id,
+                updatedAt: new Date().toISOString(),
+              },
+              userId,
+            );
+            hostsUpdated++;
+          } catch (err) {
+            errors.push(
+              `host ${hostId}: ${
+                err instanceof Error ? err.message : "update failed"
+              }`,
+            );
+          }
+        }
+      } catch (err) {
+        errors.push(
+          `${entry.identityFile}: ${
+            err instanceof Error ? err.message : "credential create failed"
+          }`,
+        );
+      }
+    }
+
+    res.json({
+      credentialsCreated,
+      hostsUpdated,
+      errors,
     });
   },
 );

@@ -3,12 +3,26 @@ import {
   ChevronUp,
   User2,
   HardDrive,
-  Menu,
+  ChevronLeft,
   ChevronRight,
   RotateCcw,
+  Layers,
+  Save,
+  Pencil,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isElectron, logoutUser } from "@/ui/main-axios.ts";
+import {
+  type SavedSplitGroup,
+  loadSavedSplitGroups,
+  persistSavedSplitGroups,
+  buildSavedSplitGroup,
+  instantiateSavedSplitGroup,
+} from "@/ui/desktop/navigation/splitGroups/savedSplitGroups.ts";
+import type { SplitLayoutNode } from "@/ui/desktop/navigation/tabs/splitLayout.ts";
+import { toast } from "sonner";
 
 import {
   Sidebar,
@@ -70,29 +84,76 @@ export function LeftSidebar({
 }: SidebarProps): React.ReactElement {
   const { t } = useTranslation();
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
-    const saved = localStorage.getItem("leftSidebarOpen");
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  const [isSidebarOpenPersisted, setIsSidebarOpenPersisted] =
+    useState<boolean>(() => {
+      const saved = localStorage.getItem("leftSidebarOpen");
+      return saved !== null ? JSON.parse(saved) : true;
+    });
+  const [isSidebarHoverOpen, setIsSidebarHoverOpen] =
+    useState<boolean>(false);
+  // Effective state — true if persisted-open OR temporarily hover-open. Hover
+  // state is never persisted, so a reload returns to the user's last
+  // committed toggle state.
+  const isSidebarOpen = isSidebarOpenPersisted || isSidebarHoverOpen;
+  // Wrapper that the toggle button uses to lock state. Toggling permanent
+  // close should also clear any in-flight hover state so the sidebar
+  // collapses immediately rather than lingering.
+  const setIsSidebarOpen = React.useCallback((open: boolean) => {
+    setIsSidebarOpenPersisted(open);
+    if (!open) setIsSidebarHoverOpen(false);
+  }, []);
+
+  // ── Hover-open handling for the closed sidebar ───────────────────────
+  const sidebarHoverCloseTimeoutRef = React.useRef<number | null>(null);
+  const handleSidebarHoverEnter = React.useCallback(() => {
+    if (sidebarHoverCloseTimeoutRef.current != null) {
+      window.clearTimeout(sidebarHoverCloseTimeoutRef.current);
+      sidebarHoverCloseTimeoutRef.current = null;
+    }
+    setIsSidebarHoverOpen(true);
+  }, []);
+  const handleSidebarHoverLeave = React.useCallback(() => {
+    if (sidebarHoverCloseTimeoutRef.current != null) {
+      window.clearTimeout(sidebarHoverCloseTimeoutRef.current);
+    }
+    sidebarHoverCloseTimeoutRef.current = window.setTimeout(() => {
+      setIsSidebarHoverOpen(false);
+      sidebarHoverCloseTimeoutRef.current = null;
+    }, 120);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (sidebarHoverCloseTimeoutRef.current != null) {
+        window.clearTimeout(sidebarHoverCloseTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const {
     tabs: tabList,
     addTab,
     setCurrentTab,
-    allSplitScreenTab,
     updateHostConfig,
+    splitLayout,
+    setSplitLayout,
   } = useTabs() as {
-    tabs: Array<{ id: number; type: string; [key: string]: unknown }>;
+    tabs: Array<{
+      id: number;
+      type: string;
+      title?: string;
+      hostConfig?: SSHHost;
+      connectionConfig?: Record<string, unknown>;
+      [key: string]: unknown;
+    }>;
     addTab: (tab: { type: string; [key: string]: unknown }) => number;
     setCurrentTab: (id: number) => void;
-    allSplitScreenTab: number[];
     updateHostConfig: (id: number, config: unknown) => void;
+    splitLayout: SplitLayoutNode | null;
+    setSplitLayout: (layout: SplitLayoutNode | null) => void;
   };
-  const isSplitScreenActive =
-    Array.isArray(allSplitScreenTab) && allSplitScreenTab.length > 0;
   const sshManagerTab = tabList.find((t) => t.type === "ssh_manager");
   const openSshManagerTab = () => {
-    if (isSplitScreenActive) return;
     if (sshManagerTab) {
       setCurrentTab(sshManagerTab.id);
       return;
@@ -102,7 +163,6 @@ export function LeftSidebar({
   };
   const adminTab = tabList.find((t) => t.type === "admin");
   const openAdminTab = () => {
-    if (isSplitScreenActive) return;
     if (adminTab) {
       setCurrentTab(adminTab.id);
       return;
@@ -112,7 +172,6 @@ export function LeftSidebar({
   };
   const userProfileTab = tabList.find((t) => t.type === "user_profile");
   const openUserProfileTab = () => {
-    if (isSplitScreenActive) return;
     if (userProfileTab) {
       setCurrentTab(userProfileTab.id);
       return;
@@ -170,6 +229,7 @@ export function LeftSidebar({
             newHost.ip !== existingHost.ip ||
             newHost.port !== existingHost.port ||
             newHost.username !== existingHost.username ||
+            newHost.folder !== existingHost.folder ||
             newHost.pin !== existingHost.pin ||
             newHost.enableTerminal !== existingHost.enableTerminal ||
             newHost.enableTunnel !== existingHost.enableTunnel ||
@@ -265,16 +325,126 @@ export function LeftSidebar({
   }, [search]);
 
   React.useEffect(() => {
-    localStorage.setItem("leftSidebarOpen", JSON.stringify(isSidebarOpen));
-  }, [isSidebarOpen]);
+    localStorage.setItem(
+      "leftSidebarOpen",
+      JSON.stringify(isSidebarOpenPersisted),
+    );
+  }, [isSidebarOpenPersisted]);
 
+  // ── Saved Split View Groups ──────────────────────────────────────────
+  const [savedGroups, setSavedGroups] = useState<SavedSplitGroup[]>(() =>
+    loadSavedSplitGroups(),
+  );
+  const [savedGroupsPopoverOpen, setSavedGroupsPopoverOpen] =
+    useState<boolean>(false);
+  const [newGroupName, setNewGroupName] = useState<string>("");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState<string>("");
+  const savedGroupsPopoverRef = React.useRef<HTMLDivElement | null>(null);
+  const savedGroupsTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+
+  React.useEffect(() => {
+    persistSavedSplitGroups(savedGroups);
+  }, [savedGroups]);
+
+  // Close popover on outside click
+  React.useEffect(() => {
+    if (!savedGroupsPopoverOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (
+        savedGroupsPopoverRef.current &&
+        target &&
+        !savedGroupsPopoverRef.current.contains(target) &&
+        !savedGroupsTriggerRef.current?.contains(target)
+      ) {
+        setSavedGroupsPopoverOpen(false);
+        setEditingGroupId(null);
+      }
+    };
+    window.addEventListener("mousedown", onDocClick);
+    return () => window.removeEventListener("mousedown", onDocClick);
+  }, [savedGroupsPopoverOpen]);
+
+  const hasActiveSplit = !!splitLayout && splitLayout.type === "split";
+
+  const handleSaveCurrentSplitGroup = () => {
+    const name = newGroupName.trim();
+    if (!name) {
+      toast.error("Give the split view a name first");
+      return;
+    }
+    if (!splitLayout) {
+      toast.error("No active split view to save");
+      return;
+    }
+    const group = buildSavedSplitGroup(name, splitLayout, (tabId) => {
+      const t = tabList.find((tab) => tab.id === tabId);
+      if (!t) return null;
+      return {
+        type: t.type,
+        title: t.title ?? "",
+        hostConfig: t.hostConfig,
+        connectionConfig: t.connectionConfig,
+      };
+    });
+    if (!group) {
+      toast.error("Current split view doesn't have enough tabs to save");
+      return;
+    }
+    setSavedGroups((prev) => [...prev, group]);
+    setNewGroupName("");
+    toast.success(`Saved split view "${name}"`);
+  };
+
+  const handleLoadSavedSplitGroup = (group: SavedSplitGroup) => {
+    const { layout, tabIds } = instantiateSavedSplitGroup(group, (tab) =>
+      addTab(tab as { type: string; [key: string]: unknown }),
+    );
+    setSplitLayout(layout);
+    if (tabIds.length > 0) {
+      setCurrentTab(tabIds[0]);
+    }
+    setSavedGroupsPopoverOpen(false);
+    toast.success(`Loaded "${group.name}"`);
+  };
+
+  const handleDeleteSavedSplitGroup = (id: string) => {
+    setSavedGroups((prev) => prev.filter((g) => g.id !== id));
+    if (editingGroupId === id) setEditingGroupId(null);
+  };
+
+  const handleStartRenameGroup = (group: SavedSplitGroup) => {
+    setEditingGroupId(group.id);
+    setEditingGroupName(group.name);
+  };
+
+  const handleCommitRenameGroup = () => {
+    if (!editingGroupId) return;
+    const name = editingGroupName.trim();
+    if (!name) {
+      setEditingGroupId(null);
+      return;
+    }
+    setSavedGroups((prev) =>
+      prev.map((g) =>
+        g.id === editingGroupId ? { ...g, name, updatedAt: Date.now() } : g,
+      ),
+    );
+    setEditingGroupId(null);
+  };
+
+  // Default width is wide enough to fit ~12-character hostnames without
+  // wrapping (status icon + ~100px for the name + a couple of action
+  // buttons + sidebar padding).
+  const DEFAULT_SIDEBAR_WIDTH = 280;
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = localStorage.getItem("leftSidebarWidth");
-    const defaultWidth = 250;
-    const savedWidth = saved !== null ? parseInt(saved, 10) : defaultWidth;
-    const minWidth = Math.min(200, Math.floor(window.innerWidth * 0.15));
+    const savedWidth =
+      saved !== null ? parseInt(saved, 10) : DEFAULT_SIDEBAR_WIDTH;
+    const minWidth = Math.min(240, Math.floor(window.innerWidth * 0.15));
     const maxWidth = Math.floor(window.innerWidth * 0.3);
-    return Math.min(savedWidth, Math.max(minWidth, maxWidth));
+    return Math.max(minWidth, Math.min(savedWidth, maxWidth));
   });
 
   const [isResizing, setIsResizing] = useState(false);
@@ -287,7 +457,7 @@ export function LeftSidebar({
 
   React.useEffect(() => {
     const handleResize = () => {
-      const minWidth = Math.min(200, Math.floor(window.innerWidth * 0.15));
+      const minWidth = Math.min(240, Math.floor(window.innerWidth * 0.15));
       const maxWidth = Math.floor(window.innerWidth * 0.3);
       if (sidebarWidth > maxWidth) {
         setSidebarWidth(Math.max(minWidth, maxWidth));
@@ -456,14 +626,27 @@ export function LeftSidebar({
         }
       >
         <div className="flex h-screen w-screen overflow-hidden">
-          <Sidebar variant="floating">
+          <Sidebar
+            variant="floating"
+            onMouseEnter={handleSidebarHoverEnter}
+            onMouseLeave={handleSidebarHoverLeave}
+            onDoubleClick={(e) => {
+              if (
+                !isSidebarOpenPersisted &&
+                (e.target === e.currentTarget ||
+                  !(e.target as HTMLElement).closest("button, a, input"))
+              ) {
+                setIsSidebarOpen(true);
+              }
+            }}
+          >
             <SidebarHeader>
               <SidebarGroupLabel className="text-lg font-bold text-foreground">
                 {t("common.appName")}
                 <div className="absolute right-5 flex gap-1">
                   <Button
                     variant="outline"
-                    onClick={() => setSidebarWidth(250)}
+                    onClick={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
                     className="w-[28px] h-[28px]"
                     title={t("common.resetSidebarWidth")}
                   >
@@ -471,11 +654,21 @@ export function LeftSidebar({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    onClick={() =>
+                      setIsSidebarOpen(!isSidebarOpenPersisted)
+                    }
                     className="w-[28px] h-[28px]"
-                    title={t("common.toggleSidebar")}
+                    title={
+                      isSidebarOpenPersisted
+                        ? t("common.toggleSidebar")
+                        : "Pin sidebar open"
+                    }
                   >
-                    <Menu className="h-4 w-4" />
+                    {isSidebarOpenPersisted ? (
+                      <ChevronLeft className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </SidebarGroupLabel>
@@ -487,16 +680,170 @@ export function LeftSidebar({
                   className="m-2 flex flex-row font-semibold border-2 !border-edge"
                   variant="outline"
                   onClick={openSshManagerTab}
-                  disabled={isSplitScreenActive}
-                  title={
-                    isSplitScreenActive
-                      ? t("interface.disabledDuringSplitScreen")
-                      : undefined
-                  }
                 >
                   <HardDrive strokeWidth="2.5" />
                   {t("nav.hostManager")}
                 </Button>
+              </SidebarGroup>
+              <SidebarGroup className="!m-0 !p-0 !-mt-1 !-mb-2 relative">
+                <div className="flex flex-row gap-2 px-2 pb-2">
+                  <Button
+                    ref={savedGroupsTriggerRef}
+                    variant="outline"
+                    className="flex-1 h-9 !px-0 border-2 !border-edge"
+                    title="Saved split views"
+                    onClick={() => {
+                      setSavedGroupsPopoverOpen((v) => !v);
+                      setEditingGroupId(null);
+                    }}
+                  >
+                    <Layers className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-9 !px-0 border-2 !border-edge opacity-50 cursor-not-allowed"
+                    title="Coming soon"
+                    disabled
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-9 !px-0 border-2 !border-edge opacity-50 cursor-not-allowed"
+                    title="Coming soon"
+                    disabled
+                  >
+                    <Save className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-9 !px-0 border-2 !border-edge opacity-50 cursor-not-allowed"
+                    title="Coming soon"
+                    disabled
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {savedGroupsPopoverOpen && (
+                  <div
+                    ref={savedGroupsPopoverRef}
+                    className="absolute left-2 right-2 top-full z-[9999] bg-surface border-2 border-edge rounded-md shadow-lg p-2 flex flex-col gap-2 max-h-[420px]"
+                  >
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold px-1">
+                      Saved Split Views
+                    </div>
+                    <div className="flex flex-col gap-1 overflow-y-auto max-h-[240px] thin-scrollbar">
+                      {savedGroups.length === 0 && (
+                        <div className="text-xs text-muted-foreground px-1 py-2">
+                          No saved split views yet.
+                        </div>
+                      )}
+                      {savedGroups.map((group) => {
+                        const isEditing = editingGroupId === group.id;
+                        return (
+                          <div
+                            key={group.id}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded hover:bg-hover"
+                          >
+                            {isEditing ? (
+                              <Input
+                                value={editingGroupName}
+                                onChange={(e) =>
+                                  setEditingGroupName(e.target.value)
+                                }
+                                onBlur={handleCommitRenameGroup}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    handleCommitRenameGroup();
+                                  } else if (e.key === "Escape") {
+                                    setEditingGroupId(null);
+                                  }
+                                }}
+                                autoFocus
+                                className="h-7 text-sm flex-1 min-w-0"
+                              />
+                            ) : (
+                              <button
+                                className="flex-1 min-w-0 text-left text-[13px] text-foreground truncate cursor-pointer"
+                                onClick={() => handleLoadSavedSplitGroup(group)}
+                                title={`Load "${group.name}" (${group.tabs.length} tabs)`}
+                              >
+                                <span className="truncate block">
+                                  {group.name}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {group.tabs.length} tabs
+                                </span>
+                              </button>
+                            )}
+                            {!isEditing && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 flex-shrink-0"
+                                  title="Rename"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartRenameGroup(group);
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 flex-shrink-0 hover:!text-red-400"
+                                  title="Delete"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteSavedSplitGroup(group.id);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <Separator />
+                    <div className="flex flex-col gap-1 px-1">
+                      <div className="text-[10px] text-muted-foreground">
+                        Save current split view
+                      </div>
+                      <div className="flex gap-1">
+                        <Input
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          placeholder="Name"
+                          className="h-7 text-sm flex-1 min-w-0"
+                          disabled={!hasActiveSplit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveCurrentSplitGroup();
+                            }
+                          }}
+                        />
+                        <Button
+                          variant="outline"
+                          className="h-7 px-2 border-2 !border-edge"
+                          onClick={handleSaveCurrentSplitGroup}
+                          disabled={!hasActiveSplit || !newGroupName.trim()}
+                        >
+                          <Save className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      {!hasActiveSplit && (
+                        <div className="text-[10px] text-muted-foreground">
+                          Open a split view to save it.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </SidebarGroup>
               <Separator className="p-0.25" />
               <SidebarGroup className="flex flex-col gap-y-2 !-mt-2">
@@ -537,6 +884,7 @@ export function LeftSidebar({
                       isLast={idx === sortedFolders.length - 1}
                       folderColor={metadata?.color}
                       folderIcon={metadata?.icon}
+                      disableRename={folder === t("leftSidebar.noFolder")}
                     />
                   );
                 })}
@@ -551,6 +899,13 @@ export function LeftSidebar({
                       <SidebarMenuButton
                         className="data-[state=open]:opacity-90 w-full"
                         disabled={disabled}
+                        onClick={() => {
+                          // Clicking the user profile button while the
+                          // sidebar is hover-open should pin it open so it
+                          // doesn't collapse out from under the dropdown
+                          // the user is about to interact with.
+                          setIsSidebarOpen(true);
+                        }}
                       >
                         <User2 /> {username ? username : t("common.logout")}
                         <ChevronUp className="ml-auto" />
@@ -622,12 +977,18 @@ export function LeftSidebar({
         </div>
       </SidebarProvider>
 
-      {!isSidebarOpen && (
+      {!isSidebarOpenPersisted && (
         <div
-          onClick={() => setIsSidebarOpen(true)}
+          onDoubleClick={() => setIsSidebarOpen(true)}
+          onMouseEnter={handleSidebarHoverEnter}
+          onMouseLeave={handleSidebarHoverLeave}
           className="fixed top-0 left-0 w-[10px] h-full cursor-pointer flex items-center justify-center rounded-tr-md rounded-br-md"
           style={{
             zIndex: 9999,
+            // Keep mounted while hover-open so the cursor can move between
+            // the strip and the sidebar without losing hover; just hide it
+            // visually so it doesn't paint over the sidebar's left edge.
+            opacity: isSidebarHoverOpen ? 0 : 1,
             backgroundColor: "var(--bg-base)",
             border: "2px solid var(--border-base)",
             borderLeft: "none",

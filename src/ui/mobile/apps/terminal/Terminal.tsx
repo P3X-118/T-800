@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useXTerm } from "react-xtermjs";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { RobustClipboardProvider } from "@/lib/clipboard-provider";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -985,12 +986,20 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const clipboardAddon = new ClipboardAddon(undefined, clipboardProvider);
       const unicode11Addon = new Unicode11Addon();
       const webLinksAddon = new WebLinksAddon();
+      const imageAddon = new ImageAddon({
+        sixelSupport: true,
+        sixelScrolling: true,
+        sixelPaletteLimit: 4096,
+        enableSizeReports: true,
+        showPlaceholder: true,
+      });
 
       fitAddonRef.current = fitAddon;
       terminal.loadAddon(fitAddon);
       terminal.loadAddon(clipboardAddon);
       terminal.loadAddon(unicode11Addon);
       terminal.loadAddon(webLinksAddon);
+      terminal.loadAddon(imageAddon);
 
       terminal.unicode.activeVersion = "11";
 

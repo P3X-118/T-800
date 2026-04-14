@@ -79,6 +79,15 @@ free and self-hosted alternative to Termius available for all platforms.
 
 See [Projects](https://github.com/orgs/P3X-118/projects/2) for all planned features. If you are looking to contribute, see [Contributing](https://github.com/P3X-118/T-800/blob/main/CONTRIBUTING.md).
 
+# Development
+
+The development server runs as **T-1000** to distinguish it from the production **T-800** instance. This is controlled by a `.env` file at the project root with `VITE_APP_NAME=T-1000`, which is gitignored and only exists on the dev server. The `.env` file is read at build time by Vite and baked into the frontend bundle. Production Docker builds from the `sgc` branch will not have this file and default to "T-800".
+
+**Branch workflow:**
+- `main` — mirrors upstream
+- `sgc-dev` — active development (T-1000 dev server at `t1000.d.sgc.ai`)
+- `sgc` — production releases (T-800 production server at `t800.sgc.ai`)
+
 # Installation
 
 Supported Devices:

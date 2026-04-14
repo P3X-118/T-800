@@ -8,6 +8,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ElectronVersionCheck } from "@/ui/desktop/user/ElectronVersionCheck.tsx";
 import "./i18n/i18n";
 import { isElectron } from "./ui/main-axios.ts";
+
+const appName = import.meta.env.VITE_APP_NAME || "T-800";
+if (document.title !== appName) document.title = appName;
 import HostManagerApp from "./ui/desktop/apps/host-manager/HostManagerApp.tsx";
 import TerminalApp from "./ui/desktop/apps/features/terminal/TerminalApp.tsx";
 import FileManagerApp from "./ui/desktop/apps/features/file-manager/FileManagerApp.tsx";

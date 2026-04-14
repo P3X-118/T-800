@@ -1215,6 +1215,127 @@ export async function bulkImportSSHHosts(
   }
 }
 
+export interface PendingKeyHost {
+  identityFile: string;
+  user: string;
+  hostIds: number[];
+  hostNames: string[];
+}
+
+export interface SSHConfigImportResult {
+  message: string;
+  success: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+  proxyJumpResolved: number;
+  proxyJumpFailed: number;
+  credentialsCreated: number;
+  credentialErrors: string[];
+  configPath: string;
+  pendingKeyHosts: PendingKeyHost[];
+}
+
+/**
+ * Triggers a server-side import from the backend's ~/.ssh/config.
+ * The backend reads the config file, parses it, reads any referenced
+ * IdentityFiles, creates credentials, inserts hosts, and resolves
+ * ProxyJump references — all in one call. If any keys couldn't be read,
+ * the response includes a `pendingKeyHosts` list so the frontend can
+ * prompt the user for them.
+ */
+export async function importSSHConfigFromDisk(
+  overwrite = false,
+): Promise<SSHConfigImportResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config", {
+      overwrite,
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "import SSH config from disk");
+  }
+}
+
+/**
+ * Import hosts from a user-uploaded SSH config file. The config text and
+ * any key file contents are sent in the request body — nothing is read
+ * from the server's filesystem.
+ */
+export async function importSSHConfigFromUpload(
+  configText: string,
+  overwrite = false,
+  keys: Record<string, string> = {},
+): Promise<SSHConfigImportResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config", {
+      configText,
+      overwrite,
+      keys,
+      sourceType: "ssh",
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "import uploaded SSH config");
+  }
+}
+
+/**
+ * Import hosts from a user-uploaded Ansible inventory (INI format). Same
+ * flow as the SSH config import — the inventory text and any referenced
+ * private key file contents are sent in the request body, and each host's
+ * Ansible group name is used as the folder.
+ */
+export async function importAnsibleInventoryFromUpload(
+  configText: string,
+  overwrite = false,
+  keys: Record<string, string> = {},
+): Promise<SSHConfigImportResult> {
+  try {
+    const response = await sshHostApi.post("/import-ssh-config", {
+      configText,
+      overwrite,
+      keys,
+      sourceType: "ansible",
+    });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "import uploaded Ansible inventory");
+  }
+}
+
+export interface ProvideKeysResult {
+  credentialsCreated: number;
+  hostsUpdated: number;
+  errors: string[];
+}
+
+/**
+ * Companion to importSSHConfigFromDisk: supplies user-provided key
+ * contents for hosts that were imported with no auth (because the
+ * IdentityFile was unreadable).
+ */
+export async function provideSSHConfigKeys(
+  keys: Array<{
+    identityFile: string;
+    user: string;
+    contents: string;
+    passphrase?: string;
+    hostIds: number[];
+  }>,
+): Promise<ProvideKeysResult> {
+  try {
+    const response = await sshHostApi.post(
+      "/import-ssh-config/provide-keys",
+      { keys },
+    );
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "supply ssh-config keys");
+  }
+}
+
 export async function bulkUpdateSSHHosts(
   hostIds: number[],
   updates: Record<string, unknown>,
@@ -3041,6 +3162,33 @@ export async function verifyTOTPLogin(
   }
 }
 
+export async function verifyWebAuthnLogin(
+  temp_token: string,
+  assertion: Record<string, unknown>,
+  challenge: string,
+  rememberMe: boolean = false,
+): Promise<AuthResponse> {
+  try {
+    const response = await authApi.post("/users/webauthn/verify-login", {
+      temp_token,
+      assertion,
+      challenge,
+      rememberMe,
+    });
+
+    const hasToken = response.data.token;
+
+    if (isElectron() && hasToken) {
+      localStorage.setItem("jwt", response.data.token);
+    }
+
+    return response.data;
+  } catch (error) {
+    handleApiError(error as AxiosError, "verify WebAuthn login");
+    throw error;
+  }
+}
+
 export async function generateBackupCodes(
   password?: string,
   totp_code?: string,
@@ -3738,6 +3886,28 @@ export async function saveCommandToHistory(
     return response.data;
   } catch (error) {
     throw handleApiError(error, "save command to history");
+  }
+}
+
+export interface ActiveTerminalSession {
+  id: string;
+  hostId: number;
+  hostName: string;
+  tabInstanceId?: string;
+  createdAt: number;
+  isConnected: boolean;
+  isAttached: boolean;
+  lastDetachedAt: number | null;
+}
+
+export async function getActiveTerminalSessions(): Promise<
+  ActiveTerminalSession[]
+> {
+  try {
+    const response = await authApi.get("/terminal/sessions");
+    return (response.data?.sessions ?? []) as ActiveTerminalSession[];
+  } catch (error) {
+    throw handleApiError(error, "fetch active terminal sessions");
   }
 }
 
@@ -4457,4 +4627,71 @@ export async function saveDashboardPreferences(
 ): Promise<{ success: boolean }> {
   const response = await dashboardApi.post("/dashboard/preferences", layout);
   return response.data;
+}
+
+// ============================================================================
+// WEBAUTHN / FIDO2 (Security Keys)
+// ============================================================================
+
+export interface WebAuthnCredential {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  aaguid: string | null;
+}
+
+export async function getWebAuthnRegistrationOptions(): Promise<Record<string, unknown>> {
+  const response = await authApi.post("/webauthn/register/options");
+  return response.data;
+}
+
+export async function verifyWebAuthnRegistration(
+  body: Record<string, unknown>,
+): Promise<{ verified: boolean; credentialId: string }> {
+  const response = await authApi.post("/webauthn/register/verify", body);
+  return response.data;
+}
+
+export async function getWebAuthnAuthenticationOptions(
+  userId: string,
+): Promise<Record<string, unknown>> {
+  const response = await authApi.post("/webauthn/authenticate/options", {
+    userId,
+  });
+  return response.data;
+}
+
+export async function verifyWebAuthnAuthentication(
+  body: Record<string, unknown>,
+): Promise<{ verified: boolean }> {
+  const response = await authApi.post("/webauthn/authenticate/verify", body);
+  return response.data;
+}
+
+export async function getWebAuthnCredentials(): Promise<WebAuthnCredential[]> {
+  const response = await authApi.get("/webauthn/credentials");
+  return response.data?.credentials ?? [];
+}
+
+export async function deleteWebAuthnCredential(
+  credentialId: string,
+): Promise<{ deleted: boolean }> {
+  const response = await authApi.delete(
+    `/webauthn/credentials/${credentialId}`,
+  );
+  return response.data;
+}
+
+export async function checkWebAuthnCredentials(
+  userId: string,
+): Promise<boolean> {
+  try {
+    const response = await authApi.get(
+      `/webauthn/has-credentials/${userId}`,
+    );
+    return response.data?.hasCredentials ?? false;
+  } catch {
+    return false;
+  }
 }

@@ -39,10 +39,24 @@ function AppContent({
   const [username, setUsername] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isTopbarOpen, setIsTopbarOpen] = useState<boolean>(() => {
-    const saved = localStorage.getItem("topNavbarOpen");
-    return saved !== null ? JSON.parse(saved) : true;
-  });
+  const [isTopbarOpenPersisted, setIsTopbarOpenPersisted] = useState<boolean>(
+    () => {
+      const saved = localStorage.getItem("topNavbarOpen");
+      return saved !== null ? JSON.parse(saved) : true;
+    },
+  );
+  const [isTopbarHoverOpen, setIsTopbarHoverOpen] = useState<boolean>(false);
+  // Effective state — true if persisted-open OR temporarily hover-open. The
+  // hover state is never persisted, so a reload returns to the user's last
+  // committed toggle state.
+  const isTopbarOpen = isTopbarOpenPersisted || isTopbarHoverOpen;
+  // Wrapper that the topbar's toggle button uses to lock state. Clicking
+  // close while currently hover-open should immediately close the topbar
+  // (otherwise the lingering hover state would keep it visible).
+  const setIsTopbarOpen = React.useCallback((open: boolean) => {
+    setIsTopbarOpenPersisted(open);
+    if (!open) setIsTopbarHoverOpen(false);
+  }, []);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionPhase, setTransitionPhase] = useState<
     "idle" | "fadeOut" | "fadeIn"
@@ -230,8 +244,11 @@ function AppContent({
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("topNavbarOpen", JSON.stringify(isTopbarOpen));
-  }, [isTopbarOpen]);
+    localStorage.setItem(
+      "topNavbarOpen",
+      JSON.stringify(isTopbarOpenPersisted),
+    );
+  }, [isTopbarOpenPersisted]);
 
   useEffect(() => {
     onAuthStateChange?.(isAuthenticated);
@@ -430,7 +447,9 @@ function AppContent({
 
           <TopNavbar
             isTopbarOpen={isTopbarOpen}
+            isTopbarPersistedOpen={isTopbarOpenPersisted}
             setIsTopbarOpen={setIsTopbarOpen}
+            setIsTopbarHoverOpen={setIsTopbarHoverOpen}
             onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
             onRightSidebarStateChange={(isOpen, width) => {
               setRightSidebarOpen(isOpen);
@@ -517,7 +536,7 @@ function AppContent({
                       willChange: "color, text-shadow",
                     }}
                   >
-                    T-800
+                    {import.meta.env.VITE_APP_NAME || "T-800"}
                   </div>
                   <div
                     className="text-sm text-muted-foreground mt-3 tracking-widest"

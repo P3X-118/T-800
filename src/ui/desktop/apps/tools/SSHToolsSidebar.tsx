@@ -42,11 +42,11 @@ import {
   Search,
   Loader2,
   Terminal,
-  LayoutGrid,
   MonitorCheck,
   Folder,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   GripVertical,
   FolderPlus,
   Settings,
@@ -101,7 +101,25 @@ interface TabData {
 
 interface SSHToolsSidebarProps {
   isOpen: boolean;
-  onClose: () => void;
+  /**
+   * Whether the user has pinned the sidebar open (as opposed to it being
+   * visible purely because of a hover). Used to flip the toggle icon
+   * between "close" and "pin open".
+   */
+  isPersistedOpen?: boolean;
+  /**
+   * Toggle the persisted open state. Called from the header toggle button.
+   * Falls back to `onClose` if omitted (for legacy usage).
+   */
+  onTogglePersisted?: (open: boolean) => void;
+  /**
+   * Fire when the cursor enters the sidebar strip or the sidebar itself —
+   * used to drive transient hover-open.
+   */
+  onHoverEnter?: () => void;
+  /** Fire when the cursor leaves the sidebar/strip. */
+  onHoverLeave?: () => void;
+  onClose?: () => void;
   onSnippetExecute: (content: string) => void;
   sidebarWidth: number;
   setSidebarWidth: (width: number) => void;
@@ -135,6 +153,10 @@ const AVAILABLE_ICONS = [
 
 export function SSHToolsSidebar({
   isOpen,
+  isPersistedOpen,
+  onTogglePersisted,
+  onHoverEnter,
+  onHoverLeave,
   onClose,
   onSnippetExecute,
   sidebarWidth,
@@ -144,18 +166,9 @@ export function SSHToolsSidebar({
 }: SSHToolsSidebarProps) {
   const { t } = useTranslation();
   const { confirmWithToast } = useConfirmation();
-  const {
-    tabs,
-    currentTab,
-    allSplitScreenTab,
-    setSplitScreenTab,
-    setCurrentTab,
-  } = useTabs() as {
+  const { tabs, currentTab } = useTabs() as {
     tabs: TabData[];
     currentTab: number | null;
-    allSplitScreenTab: number[];
-    setSplitScreenTab: (tabId: number) => void;
-    setCurrentTab: (tabId: number) => void;
   };
   const [activeTab, setActiveTab] = useState(initialTab || "ssh-tools");
 
@@ -223,18 +236,6 @@ export function SSHToolsSidebar({
   const [historyRefreshCounter, setHistoryRefreshCounter] = useState(0);
   const commandHistoryScrollRef = React.useRef<HTMLDivElement>(null);
 
-  const [splitMode, setSplitMode] = useState<
-    "none" | "2" | "3" | "4" | "5" | "6"
-  >("none");
-  const [splitAssignments, setSplitAssignments] = useState<Map<number, number>>(
-    new Map(),
-  );
-  const [previewKey, setPreviewKey] = useState(0);
-  const [draggedTabId, setDraggedTabId] = useState<number | null>(null);
-  const [dragOverCellIndex, setDragOverCellIndex] = useState<number | null>(
-    null,
-  );
-
   const [isResizing, setIsResizing] = useState(false);
   const startXRef = React.useRef<number | null>(null);
   const startWidthRef = React.useRef<number>(sidebarWidth);
@@ -244,18 +245,6 @@ export function SSHToolsSidebar({
   const activeTerminal =
     activeUiTab?.type === "terminal" ? activeUiTab : undefined;
   const activeTerminalHostId = activeTerminal?.hostConfig?.id;
-
-  const splittableTabs = tabs.filter(
-    (tab: TabData) =>
-      tab.type === "terminal" ||
-      tab.type === "server_stats" ||
-      tab.type === "file_manager" ||
-      tab.type === "tunnel" ||
-      tab.type === "docker" ||
-      tab.type === "rdp" ||
-      tab.type === "vnc" ||
-      tab.type === "telnet",
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -982,127 +971,6 @@ export function SSHToolsSidebar({
     }
   };
 
-  const handleSplitModeChange = (
-    mode: "none" | "2" | "3" | "4" | "5" | "6",
-  ) => {
-    setSplitMode(mode);
-
-    if (mode === "none") {
-      handleClearSplit();
-    } else {
-      setSplitAssignments(new Map());
-      setPreviewKey((prev) => prev + 1);
-    }
-  };
-
-  const handleTabDragStart = (tabId: number) => {
-    setDraggedTabId(tabId);
-  };
-
-  const handleTabDragEnd = () => {
-    setDraggedTabId(null);
-    setDragOverCellIndex(null);
-  };
-
-  const handleTabDragOver = (e: React.DragEvent, cellIndex: number) => {
-    e.preventDefault();
-    setDragOverCellIndex(cellIndex);
-  };
-
-  const handleTabDragLeave = () => {
-    setDragOverCellIndex(null);
-  };
-
-  const handleTabDrop = (cellIndex: number) => {
-    if (draggedTabId === null) return;
-
-    setSplitAssignments((prev) => {
-      const newMap = new Map(prev);
-      Array.from(newMap.entries()).forEach(([idx, id]) => {
-        if (id === draggedTabId && idx !== cellIndex) {
-          newMap.delete(idx);
-        }
-      });
-      newMap.set(cellIndex, draggedTabId);
-      return newMap;
-    });
-
-    setDraggedTabId(null);
-    setDragOverCellIndex(null);
-    setPreviewKey((prev) => prev + 1);
-  };
-
-  const handleRemoveFromCell = (cellIndex: number) => {
-    setSplitAssignments((prev) => {
-      const newMap = new Map(prev);
-      newMap.delete(cellIndex);
-      setPreviewKey((prev) => prev + 1);
-      return newMap;
-    });
-  };
-
-  const handleApplySplit = () => {
-    if (splitMode === "none") {
-      handleClearSplit();
-      return;
-    }
-
-    if (splitAssignments.size === 0) {
-      toast.error(t("splitScreen.error.noAssignments"));
-      return;
-    }
-
-    const requiredSlots = parseInt(splitMode);
-
-    if (splitAssignments.size < requiredSlots) {
-      toast.error(
-        t("splitScreen.error.fillAllSlots", {
-          count: requiredSlots,
-        }),
-      );
-      return;
-    }
-
-    const orderedTabIds: number[] = [];
-    for (let i = 0; i < requiredSlots; i++) {
-      const tabId = splitAssignments.get(i);
-      if (tabId !== undefined) {
-        orderedTabIds.push(tabId);
-      }
-    }
-
-    const currentSplits = [...allSplitScreenTab];
-    currentSplits.forEach((tabId) => {
-      setSplitScreenTab(tabId);
-    });
-
-    orderedTabIds.forEach((tabId) => {
-      setSplitScreenTab(tabId);
-    });
-
-    if (!orderedTabIds.includes(currentTab ?? 0)) {
-      setCurrentTab(orderedTabIds[0]);
-    }
-
-    toast.success(t("splitScreen.success"));
-  };
-
-  const handleClearSplit = () => {
-    allSplitScreenTab.forEach((tabId) => {
-      setSplitScreenTab(tabId);
-    });
-
-    setSplitMode("none");
-    setSplitAssignments(new Map());
-    setPreviewKey((prev) => prev + 1);
-
-    toast.success(t("splitScreen.cleared"));
-  };
-
-  const handleResetToSingle = () => {
-    handleClearSplit();
-  };
-
   const handleCommandSelect = (command: string) => {
     if (activeTerminal?.terminalRef?.current?.sendInput) {
       activeTerminal.terminalRef.current.sendInput(command);
@@ -1121,10 +989,46 @@ export function SSHToolsSidebar({
     }
   };
 
+  const isPersistedClosed = isPersistedOpen != null ? !isPersistedOpen : !isOpen;
+
+  const handleTogglePinned = () => {
+    if (onTogglePersisted) {
+      onTogglePersisted(isPersistedClosed);
+    } else if (onClose) {
+      onClose();
+    }
+  };
+
   return (
     <>
+      {/* Persistent hover-strip along the right edge. Always mounted when
+          the sidebar is persisted-closed so the cursor can enter it to
+          trigger hover-open; invisible while hover-open to avoid painting
+          over the sidebar's right edge. */}
+      {isPersistedClosed && (
+        <div
+          onDoubleClick={() => onTogglePersisted?.(true)}
+          onMouseEnter={onHoverEnter}
+          onMouseLeave={onHoverLeave}
+          className="fixed top-0 right-0 w-[10px] h-full cursor-pointer flex items-center justify-center rounded-tl-md rounded-bl-md"
+          style={{
+            zIndex: 9999,
+            opacity: isOpen ? 0 : 1,
+            backgroundColor: "var(--bg-base)",
+            border: "2px solid var(--border-base)",
+            borderRight: "none",
+          }}
+        >
+          <ChevronLeft size={10} />
+        </div>
+      )}
+
       {isOpen && (
-        <div className="fixed top-0 right-0 h-0 w-0 pointer-events-none">
+        <div
+          className="fixed top-0 right-0 h-0 w-0 pointer-events-none"
+          onMouseEnter={onHoverEnter}
+          onMouseLeave={onHoverLeave}
+        >
           <SidebarProvider
             open={isOpen}
             style={
@@ -1136,6 +1040,23 @@ export function SSHToolsSidebar({
               variant="floating"
               side="right"
               className="pointer-events-auto"
+              onMouseEnter={onHoverEnter}
+              onMouseLeave={onHoverLeave}
+              onDoubleClick={(e) => {
+                // Double-clicking anywhere on the sidebar (except on
+                // interactive controls like buttons/inputs/links) pins it
+                // open so it doesn't collapse out from under the user.
+                if (isPersistedOpen) return;
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest(
+                    'button, input, textarea, a, [role="button"]',
+                  )
+                ) {
+                  return;
+                }
+                onTogglePersisted?.(true);
+              }}
             >
               <SidebarHeader>
                 <SidebarGroupLabel className="text-lg font-bold text-foreground">
@@ -1151,11 +1072,19 @@ export function SSHToolsSidebar({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={onClose}
+                      onClick={handleTogglePinned}
                       className="w-[28px] h-[28px]"
-                      title={t("common.close")}
+                      title={
+                        isPersistedClosed
+                          ? "Pin tools sidebar open"
+                          : t("common.close")
+                      }
                     >
-                      <X className="h-4 w-4" />
+                      {isPersistedClosed ? (
+                        <ChevronLeft className="h-4 w-4" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 </SidebarGroupLabel>
@@ -1167,7 +1096,7 @@ export function SSHToolsSidebar({
                   onValueChange={handleTabChange}
                   className="flex flex-col h-full overflow-hidden"
                 >
-                  <TabsList className="w-full grid grid-cols-4 mb-4 flex-shrink-0">
+                  <TabsList className="w-full grid grid-cols-3 mb-4 flex-shrink-0">
                     <TabsTrigger value="ssh-tools">
                       {t("sshTools.title")}
                     </TabsTrigger>
@@ -1176,9 +1105,6 @@ export function SSHToolsSidebar({
                     </TabsTrigger>
                     <TabsTrigger value="command-history">
                       {t("commandHistory.title")}
-                    </TabsTrigger>
-                    <TabsTrigger value="split-screen">
-                      {t("splitScreen.title")}
                     </TabsTrigger>
                   </TabsList>
 
@@ -1729,199 +1655,6 @@ export function SSHToolsSidebar({
                     </div>
                   </TabsContent>
 
-                  <TabsContent
-                    value="split-screen"
-                    className="flex flex-col flex-1 overflow-hidden"
-                  >
-                    <div className="space-y-4 flex-1 overflow-y-auto overflow-x-hidden pb-4 thin-scrollbar">
-                      <Tabs
-                        value={splitMode}
-                        onValueChange={(value) =>
-                          handleSplitModeChange(
-                            value as "none" | "2" | "3" | "4" | "5" | "6",
-                          )
-                        }
-                        className="w-full"
-                      >
-                        <TabsList className="w-full grid grid-cols-3 grid-rows-2 h-auto gap-2 p-2">
-                          <TabsTrigger value="none" className="h-10">
-                            {t("splitScreen.none")}
-                          </TabsTrigger>
-                          <TabsTrigger value="2" className="h-10">
-                            {t("splitScreen.twoSplit")}
-                          </TabsTrigger>
-                          <TabsTrigger value="3" className="h-10">
-                            {t("splitScreen.threeSplit")}
-                          </TabsTrigger>
-                          <TabsTrigger value="4" className="h-10">
-                            {t("splitScreen.fourSplit")}
-                          </TabsTrigger>
-                          <TabsTrigger value="5" className="h-10">
-                            {t("splitScreen.fiveSplit")}
-                          </TabsTrigger>
-                          <TabsTrigger value="6" className="h-10">
-                            {t("splitScreen.sixSplit")}
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-
-                      {splitMode !== "none" && (
-                        <>
-                          <Separator />
-
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-foreground">
-                              {t("splitScreen.availableTabs")}
-                            </label>
-                            <p className="text-xs text-muted-foreground mb-2">
-                              {t("splitScreen.dragTabsHint")}
-                            </p>
-                            <div className="space-y-1 max-h-[200px] overflow-y-auto thin-scrollbar">
-                              {splittableTabs.map((tab) => {
-                                const isAssigned = Array.from(
-                                  splitAssignments.values(),
-                                ).includes(tab.id);
-                                const isDragging = draggedTabId === tab.id;
-
-                                return (
-                                  <div
-                                    key={tab.id}
-                                    draggable={!isAssigned}
-                                    onDragStart={() =>
-                                      handleTabDragStart(tab.id)
-                                    }
-                                    onDragEnd={handleTabDragEnd}
-                                    className={`
-                                      px-3 py-2 rounded-md text-sm cursor-move transition-all
-                                      ${
-                                        isAssigned
-                                          ? "bg-canvas/50 text-muted-foreground cursor-not-allowed opacity-50"
-                                          : "bg-canvas border border-edge hover:border-edge-hover hover:bg-field"
-                                      }
-                                      ${isDragging ? "opacity-50" : ""}
-                                    `}
-                                  >
-                                    <span className="truncate">
-                                      {tab.title}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-foreground">
-                              {t("splitScreen.layout")}
-                            </label>
-                            <div
-                              className={`grid gap-2 mt-2 ${
-                                splitMode === "2"
-                                  ? "grid-cols-2"
-                                  : splitMode === "5" || splitMode === "6"
-                                    ? "grid-cols-3 grid-rows-2"
-                                    : "grid-cols-2 grid-rows-2"
-                              }`}
-                            >
-                              {Array.from(
-                                { length: parseInt(splitMode) },
-                                (_, idx) => {
-                                  const assignedTabId =
-                                    splitAssignments.get(idx);
-                                  const assignedTab = assignedTabId
-                                    ? splittableTabs.find(
-                                        (t) => t.id === assignedTabId,
-                                      )
-                                    : null;
-                                  const isHovered = dragOverCellIndex === idx;
-                                  const isEmpty = !assignedTabId;
-
-                                  return (
-                                    <div
-                                      key={idx}
-                                      onDragOver={(e) =>
-                                        handleTabDragOver(e, idx)
-                                      }
-                                      onDragLeave={handleTabDragLeave}
-                                      onDrop={() => handleTabDrop(idx)}
-                                      className={`
-                                        relative bg-canvas border-2 rounded-md p-3 min-h-[100px]
-                                        flex flex-col items-center justify-center transition-all
-                                        ${splitMode === "3" && idx === 2 ? "col-span-2" : ""}
-                                        ${
-                                          isEmpty
-                                            ? "border-dashed border-edge"
-                                            : "border-solid border-edge-hover bg-surface"
-                                        }
-                                        ${
-                                          isHovered && draggedTabId
-                                            ? "border-edge-hover bg-surface ring-2 ring-edge-hover"
-                                            : ""
-                                        }
-                                      `}
-                                    >
-                                      {assignedTab ? (
-                                        <>
-                                          <span className="text-sm text-foreground truncate w-full text-center mb-2">
-                                            {assignedTab.title}
-                                          </span>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() =>
-                                              handleRemoveFromCell(idx)
-                                            }
-                                            className="h-6 text-xs hover:bg-red-500/20"
-                                          >
-                                            {t("common.remove")}
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <span className="text-xs text-muted-foreground">
-                                          {t("splitScreen.dropHere")}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
-                                },
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2 pt-2">
-                            <Button
-                              onClick={handleApplySplit}
-                              className="flex-1"
-                              disabled={splitAssignments.size === 0}
-                            >
-                              {t("splitScreen.apply")}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={handleClearSplit}
-                              className="flex-1"
-                            >
-                              {t("splitScreen.clear")}
-                            </Button>
-                          </div>
-                        </>
-                      )}
-
-                      {splitMode === "none" && (
-                        <div className="text-center py-8">
-                          <LayoutGrid className="h-12 w-12 mb-4 opacity-20 mx-auto" />
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {t("splitScreen.selectMode")}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {t("splitScreen.helpText")}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </TabsContent>
                 </Tabs>
               </SidebarContent>
               {isOpen && (

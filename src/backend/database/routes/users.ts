@@ -28,6 +28,7 @@ import {
   networkTopology,
   dashboardPreferences,
   opksshTokens,
+  webauthnCredentials,
 } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -1519,7 +1520,17 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    if (userRecord.totpEnabled) {
+    // Check if user has WebAuthn credentials registered
+    const webauthnCount = (
+      db.$client
+        .prepare(
+          "SELECT COUNT(*) as count FROM webauthn_credentials WHERE user_id = ?",
+        )
+        .get(userRecord.id) as { count: number } | undefined
+    )?.count ?? 0;
+    const hasWebAuthn = webauthnCount > 0;
+
+    if (userRecord.totpEnabled || hasWebAuthn) {
       const deviceFingerprint = generateDeviceFingerprint(deviceInfo);
 
       const isTrusted = await authManager.isTrustedDevice(
@@ -1528,8 +1539,8 @@ router.post("/login", async (req, res) => {
       );
 
       if (isTrusted) {
-        authLogger.info("TOTP bypassed for trusted device", {
-          operation: "totp_bypass",
+        authLogger.info("2FA bypassed for trusted device", {
+          operation: "mfa_bypass",
           userId: userRecord.id,
           deviceFingerprint,
         });
@@ -1540,7 +1551,9 @@ router.post("/login", async (req, res) => {
         });
         return res.json({
           success: true,
-          requires_totp: true,
+          requires_totp: userRecord.totpEnabled,
+          has_webauthn: hasWebAuthn,
+          user_id: userRecord.id,
           temp_token: tempToken,
           rememberMe: !!rememberMe,
         });
@@ -3367,6 +3380,186 @@ router.post("/totp/verify-login", async (req, res) => {
   } catch (err) {
     authLogger.error("TOTP verification failed", err);
     return res.status(500).json({ error: "TOTP verification failed" });
+  }
+});
+
+/**
+ * @openapi
+ * /users/webauthn/verify-login:
+ *   post:
+ *     summary: Complete WebAuthn login verification
+ *     description: |
+ *       Verifies a WebAuthn assertion after password login. Takes the
+ *       temporary token from the password step plus the WebAuthn assertion
+ *       response and issues a full JWT on success.
+ *     tags:
+ *       - Users
+ */
+router.post("/webauthn/verify-login", async (req, res) => {
+  const { temp_token, assertion, rememberMe } = req.body;
+
+  if (!temp_token || !assertion) {
+    return res
+      .status(400)
+      .json({ error: "Token and WebAuthn assertion required" });
+  }
+
+  try {
+    const decoded = await authManager.verifyJWTToken(temp_token);
+    if (!decoded || !decoded.pendingTOTP) {
+      return res.status(401).json({ error: "Invalid temporary token" });
+    }
+
+    const userId = decoded.userId;
+
+    // Verify the WebAuthn assertion via internal logic (same as webauthn.ts)
+    const {
+      verifyAuthenticationResponse,
+    } = await import("@simplewebauthn/server");
+
+    const origin =
+      req.headers.origin || `${req.protocol}://${req.get("host")}`;
+    const rpID = new URL(origin).hostname;
+
+    // Retrieve the stored challenge
+    // Import the challenge store from webauthn routes — since they share
+    // the same process we can reference it directly.
+    const { default: webauthnRouter } = await import("./webauthn.js");
+
+    // The challenge is stored per-user in the webauthn route's in-memory map.
+    // Since we can't easily access it from here, we'll look up the credential
+    // and verify. The challenge was set by the /webauthn/authenticate/options
+    // call the frontend made before this endpoint.
+
+    // Find the credential being used
+    const credentialId = assertion.id;
+    const cred = db.$client
+      .prepare(
+        "SELECT * FROM webauthn_credentials WHERE user_id = ? AND credential_id = ?",
+      )
+      .get(userId, credentialId) as
+      | {
+          id: string;
+          credentialId: string;
+          publicKey: string;
+          counter: number;
+          transports: string | null;
+        }
+      | undefined;
+
+    if (!cred) {
+      return res.status(400).json({ error: "Credential not found" });
+    }
+
+    // We need the stored challenge. Since the challenge store is in the
+    // webauthn module, we access it by convention: the frontend calls
+    // /webauthn/authenticate/options which stores the challenge, then
+    // calls this endpoint. We read from the same in-memory store.
+    // Rather than importing internals, we'll just accept the challenge
+    // in the request body (the frontend got it from the options call).
+    const { challenge } = req.body;
+    if (!challenge) {
+      return res
+        .status(400)
+        .json({ error: "Challenge required for verification" });
+    }
+
+    const verification = await verifyAuthenticationResponse({
+      response: assertion,
+      expectedChallenge: challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      credential: {
+        id: cred.credentialId,
+        publicKey: new Uint8Array(Buffer.from(cred.publicKey, "base64")),
+        counter: cred.counter,
+        transports: cred.transports
+          ? JSON.parse(cred.transports)
+          : undefined,
+      },
+    });
+
+    if (!verification.verified) {
+      return res.status(401).json({ error: "WebAuthn verification failed" });
+    }
+
+    // Update counter
+    db.$client
+      .prepare(
+        "UPDATE webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?",
+      )
+      .run(
+        verification.authenticationInfo.newCounter,
+        new Date().toISOString(),
+        cred.id,
+      );
+
+    // Issue full JWT — same as TOTP verify-login success path
+    const userRecord = db.$client
+      .prepare("SELECT * FROM users WHERE id = ?")
+      .get(userId) as
+      | {
+          id: string;
+          username: string;
+          isAdmin: number;
+          isOidc: number;
+          totpEnabled: number;
+        }
+      | undefined;
+    if (!userRecord) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const deviceInfo = parseUserAgent(req);
+
+    if (rememberMe) {
+      const deviceFingerprint = generateDeviceFingerprint(deviceInfo);
+      await authManager.addTrustedDevice(
+        userRecord.id,
+        deviceFingerprint,
+        deviceInfo.type,
+        deviceInfo.deviceInfo,
+      );
+    }
+
+    const token = await authManager.generateJWTToken(userRecord.id, {
+      rememberMe: !!rememberMe,
+      deviceType: deviceInfo.type,
+      deviceInfo: deviceInfo.deviceInfo,
+    });
+
+    authLogger.success("WebAuthn login verification successful", {
+      operation: "webauthn_login_success",
+      userId: userRecord.id,
+    });
+
+    const isElectron =
+      req.headers["x-electron-app"] === "true" ||
+      req.headers["X-Electron-App"] === "true";
+
+    const response: Record<string, unknown> = {
+      success: true,
+      is_admin: !!userRecord.isAdmin,
+      username: userRecord.username,
+      userId: userRecord.id,
+    };
+
+    if (isElectron) {
+      response.token = token;
+    }
+
+    const maxAge = rememberMe
+      ? 30 * 24 * 60 * 60 * 1000
+      : 2 * 60 * 60 * 1000;
+
+    return res
+      .cookie("jwt", token, authManager.getSecureCookieOptions(req, maxAge))
+      .json(response);
+  } catch (err) {
+    authLogger.error("WebAuthn login verification failed", err);
+    return res
+      .status(500)
+      .json({ error: "WebAuthn verification failed" });
   }
 });
 

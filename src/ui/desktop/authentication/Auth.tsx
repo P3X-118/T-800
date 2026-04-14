@@ -30,11 +30,16 @@ import {
   completePasswordReset,
   getOIDCAuthorizeUrl,
   verifyTOTPLogin,
+  verifyWebAuthnLogin,
+  getWebAuthnAuthenticationOptions,
   getServerConfig,
   isElectron,
   getEmbeddedServerStatus,
   isEmbeddedMode,
 } from "../../main-axios.ts";
+// Lazy-imported to avoid circular module initialization
+const lazyStartAuthentication = () =>
+  import("@simplewebauthn/browser").then((m) => m.startAuthentication);
 import { ElectronServerConfig as ServerConfigComponent } from "@/ui/desktop/authentication/ElectronServerConfig.tsx";
 import { ElectronLoginForm } from "@/ui/desktop/authentication/ElectronLoginForm.tsx";
 
@@ -137,6 +142,10 @@ export function Auth({
   const [totpLoading, setTotpLoading] = useState(false);
   const [webviewAuthSuccess, setWebviewAuthSuccess] = useState(false);
   const totpInputRef = React.useRef<HTMLInputElement>(null);
+
+  const [webauthnAvailable, setWebauthnAvailable] = useState(false);
+  const [webauthnUserId, setWebauthnUserId] = useState("");
+  const [webauthnLoading, setWebauthnLoading] = useState(false);
 
   const [showServerConfig, setShowServerConfig] = useState<boolean | null>(
     null,
@@ -303,8 +312,12 @@ export function Auth({
         res = await loginUser(localUsername, password, rememberMe);
       }
 
-      if (res.requires_totp) {
-        setTotpRequired(true);
+      if (res.requires_totp || res.has_webauthn) {
+        if (res.requires_totp) setTotpRequired(true);
+        if (res.has_webauthn) {
+          setWebauthnAvailable(true);
+          setWebauthnUserId(res.user_id || "");
+        }
         setTotpTempToken(res.temp_token);
         setLoading(false);
         return;
@@ -609,6 +622,61 @@ export function Auth({
       }
     } finally {
       setTotpLoading(false);
+    }
+  }
+
+  async function handleWebAuthnVerification() {
+    setWebauthnLoading(true);
+    try {
+      const options = await getWebAuthnAuthenticationOptions(webauthnUserId);
+      const startAuth = await lazyStartAuthentication();
+      const assertion = await startAuth({
+        optionsJSON: options as any,
+      });
+      const challenge = (options as any).challenge;
+      const res = await verifyWebAuthnLogin(
+        totpTempToken,
+        assertion,
+        challenge,
+        rememberMe,
+      );
+
+      if (!res || !res.success) {
+        throw new Error("WebAuthn verification failed");
+      }
+
+      if (isElectron() && res.token) {
+        localStorage.setItem("jwt", res.token);
+      }
+
+      setLoggedIn(true);
+      setIsAdmin(!!res.is_admin);
+      setUsername(res.username || null);
+      setUserId(res.userId || null);
+      setDbError(null);
+
+      onAuthSuccess({
+        isAdmin: !!res.is_admin,
+        username: res.username || null,
+        userId: res.userId || null,
+      });
+
+      setInternalLoggedIn(true);
+      setTotpRequired(false);
+      setWebauthnAvailable(false);
+      setTotpCode("");
+      setTotpTempToken("");
+      toast.success(t("messages.loginSuccess"));
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "WebAuthn verification failed";
+      if (msg.includes("cancelled") || msg.includes("AbortError")) {
+        toast.message("Security key authentication cancelled");
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setWebauthnLoading(false);
     }
   }
 
@@ -1065,7 +1133,7 @@ export function Auth({
                 </div>
               </div>
             )}
-            {!webviewAuthSuccess && totpRequired && (
+            {!webviewAuthSuccess && (totpRequired || webauthnAvailable) && (
               <form
                 className="flex flex-col gap-5"
                 onSubmit={(e) => {
@@ -1077,45 +1145,97 @@ export function Auth({
                   <h2 className="text-xl font-bold mb-1">
                     {t("auth.twoFactorAuth")}
                   </h2>
-                  <p className="text-muted-foreground">{t("auth.enterCode")}</p>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="totp-code">{t("auth.verifyCode")}</Label>
-                  <Input
-                    ref={totpInputRef}
-                    id="totp-code"
-                    type="text"
-                    placeholder="000000"
-                    maxLength={6}
-                    value={totpCode}
-                    onChange={(e) =>
-                      setTotpCode(e.target.value.replace(/\D/g, ""))
-                    }
-                    disabled={totpLoading}
-                    className="text-center text-2xl tracking-widest font-mono"
-                    autoComplete="one-time-code"
-                  />
-                  <p className="text-xs text-muted-foreground text-center">
-                    {t("auth.backupCode")}
+                  <p className="text-muted-foreground">
+                    {webauthnAvailable && totpRequired
+                      ? "Use your security key or enter a TOTP code"
+                      : webauthnAvailable
+                        ? "Tap your security key to continue"
+                        : t("auth.enterCode")}
                   </p>
                 </div>
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-base font-semibold"
-                  disabled={totpLoading || totpCode.length < 6}
-                >
-                  {totpLoading ? Spinner : t("auth.verifyCode")}
-                </Button>
+                {webauthnAvailable && (
+                  <Button
+                    type="button"
+                    className="w-full h-11 text-base font-semibold gap-2"
+                    disabled={webauthnLoading}
+                    onClick={handleWebAuthnVerification}
+                  >
+                    {webauthnLoading ? (
+                      Spinner
+                    ) : (
+                      <>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-5 w-5"
+                        >
+                          <path d="M12 19h8" />
+                          <path d="m4 17 6-6-6-6" />
+                        </svg>
+                        Sign in with Security Key
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                {webauthnAvailable && totpRequired && (
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <div className="flex-1 h-px bg-border" />
+                    or
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
+
+                {totpRequired && (
+                  <>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="totp-code">
+                        {t("auth.verifyCode")}
+                      </Label>
+                      <Input
+                        ref={totpInputRef}
+                        id="totp-code"
+                        type="text"
+                        placeholder="000000"
+                        maxLength={6}
+                        value={totpCode}
+                        onChange={(e) =>
+                          setTotpCode(e.target.value.replace(/\D/g, ""))
+                        }
+                        disabled={totpLoading}
+                        className="text-center text-2xl tracking-widest font-mono"
+                        autoComplete="one-time-code"
+                      />
+                      <p className="text-xs text-muted-foreground text-center">
+                        {t("auth.backupCode")}
+                      </p>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant={webauthnAvailable ? "outline" : "default"}
+                      className="w-full h-11 text-base font-semibold"
+                      disabled={totpLoading || totpCode.length < 6}
+                    >
+                      {totpLoading ? Spinner : t("auth.verifyCode")}
+                    </Button>
+                  </>
+                )}
 
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full h-11 text-base font-semibold"
-                  disabled={totpLoading}
+                  disabled={totpLoading || webauthnLoading}
                   onClick={() => {
                     setTotpRequired(false);
+                    setWebauthnAvailable(false);
                     setTotpCode("");
                     setTotpTempToken("");
                   }}
@@ -1128,7 +1248,8 @@ export function Auth({
             {!webviewAuthSuccess &&
               !loggedIn &&
               !authLoading &&
-              !totpRequired && (
+              !totpRequired &&
+              !webauthnAvailable && (
                 <>
                   {(() => {
                     const hasLogin = passwordLoginAllowed && !firstUser;
