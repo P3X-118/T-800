@@ -6,6 +6,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { authLogger, databaseLogger } from "../../utils/logger.js";
 import { AuthManager } from "../../utils/auth-manager.js";
+import { sessionManager } from "../../ssh/terminal-session-manager.js";
 
 const router = express.Router();
 
@@ -394,6 +395,57 @@ router.post(
       authLogger.error("Failed to save session settings", err);
       res.status(500).json({
         error: err instanceof Error ? err.message : "Failed to save settings",
+      });
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /terminal/sessions:
+ *   get:
+ *     summary: List active terminal sessions for the authenticated user
+ *     description: |
+ *       Returns all in-memory terminal SSH sessions belonging to the
+ *       authenticated user, including their connection state and which
+ *       host they belong to. Used by the "session roaming" UI so a user
+ *       can resume sessions from a different browser or device.
+ *     tags:
+ *       - Terminal
+ *     responses:
+ *       200:
+ *         description: List of active sessions.
+ *       401:
+ *         description: Not authenticated.
+ */
+router.get(
+  "/sessions",
+  authenticateJWT,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = (req as AuthenticatedRequest).userId;
+      if (!isNonEmptyString(userId)) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      const sessions = sessionManager.getUserSessions(userId);
+      res.json({
+        sessions: sessions.map((s) => ({
+          id: s.id,
+          hostId: s.hostId,
+          hostName: s.hostName,
+          tabInstanceId: s.tabInstanceId,
+          createdAt: s.createdAt,
+          isConnected: s.isConnected,
+          isAttached:
+            !!s.attachedWs && s.attachedWs.readyState === 1, // WebSocket.OPEN
+          lastDetachedAt: s.lastDetachedAt,
+        })),
+      });
+    } catch (err) {
+      databaseLogger.error("Failed to list terminal sessions", err);
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to list sessions",
       });
     }
   },

@@ -2333,7 +2333,7 @@
     "enableCommandPaletteShortcut": "Enable Command Palette Shortcut",
     "enableCommandPaletteShortcutDesc": "Double-tap left Shift to open the Command Palette for quick access to hosts",
     "enableTerminalSessionPersistence": "Persistent Tabs/Sessions",
-    "enableTerminalSessionPersistenceDesc": "Maintain SSH connections when switching tabs or closing the browser (may be unstable)"
+    "enableTerminalSessionPersistenceDesc": "Preserve SSH connections, scrollback, and split layout across page refreshes and browser restarts. Sessions stay alive for 30 minutes after disconnect."
   },
   "user": {
     "failedToLoadVersionInfo": "Failed to load version information"

@@ -1,6 +1,15 @@
 export type SplitDirection = "horizontal" | "vertical";
 
-export type DropPosition = "top" | "right" | "bottom" | "left" | "center";
+export type DropPosition =
+  | "top"
+  | "right"
+  | "bottom"
+  | "left"
+  | "center"
+  | "max-top"
+  | "max-right"
+  | "max-bottom"
+  | "max-left";
 
 export type SplitLayoutNode =
   | { type: "leaf"; tabId: number }
@@ -220,6 +229,425 @@ export function removeLeaf(
   }
 
   return { ...tree, children: flattened };
+}
+
+/**
+ * Insert a new full-width row or full-height column adjacent to the row/column
+ * that contains `targetTabId`.
+ *
+ * - axis="row": find the row containing target (lowest ancestor whose parent
+ *   is a vertical split, or the root) and insert a new row sibling before/after.
+ * - axis="column": find the column containing target (lowest ancestor whose
+ *   parent is horizontal) and insert a new column sibling before/after.
+ *
+ * If no matching ancestor exists, the existing tree is wrapped in a new
+ * vertical/horizontal split with the new leaf adjacent to it.
+ */
+export function insertAdjacentRowOrColumn(
+  tree: SplitLayoutNode,
+  targetTabId: number,
+  axis: "row" | "column",
+  side: "before" | "after",
+  newTabId: number,
+): SplitLayoutNode {
+  const wantParentDir: SplitDirection =
+    axis === "row" ? "vertical" : "horizontal";
+
+  function findPath(
+    node: SplitLayoutNode,
+    target: number,
+    acc: number[],
+  ): number[] | null {
+    if (node.type === "leaf") {
+      return node.tabId === target ? acc : null;
+    }
+    for (let i = 0; i < node.children.length; i++) {
+      const sub = findPath(node.children[i], target, [...acc, i]);
+      if (sub) return sub;
+    }
+    return null;
+  }
+
+  const path = findPath(tree, targetTabId, []);
+  if (!path) return tree;
+
+  // Walk root → leaf collecting nodes
+  const chain: SplitLayoutNode[] = [tree];
+  for (const idx of path) {
+    const last = chain[chain.length - 1];
+    if (last.type !== "split") break;
+    chain.push(last.children[idx]);
+  }
+  // chain[0] = root, chain[chain.length-1] = leaf
+
+  // Find lowest ancestor whose parent is wantParentDir, or root if none.
+  let containerDepth = 0;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (i === 0) {
+      containerDepth = 0;
+      break;
+    }
+    const parent = chain[i - 1];
+    if (parent.type === "split" && parent.direction === wantParentDir) {
+      containerDepth = i;
+      break;
+    }
+  }
+
+  const newLeaf: SplitLayoutNode = { type: "leaf", tabId: newTabId };
+  const insertBefore = side === "before";
+
+  if (containerDepth === 0) {
+    // No matching parent — wrap the tree in a new outermost split
+    return {
+      type: "split",
+      direction: wantParentDir,
+      children: insertBefore ? [newLeaf, tree] : [tree, newLeaf],
+    };
+  }
+
+  // chain[containerDepth] is the row/column container; chain[containerDepth-1]
+  // is the parent split (running in wantParentDir). Insert as a sibling.
+  const containerIdxInParent = path[containerDepth - 1];
+  const insertIdx = insertBefore
+    ? containerIdxInParent
+    : containerIdxInParent + 1;
+
+  function rebuild(
+    node: SplitLayoutNode,
+    depth: number,
+  ): SplitLayoutNode {
+    if (depth === containerDepth - 1) {
+      if (node.type !== "split") return node;
+      const newChildren = [...node.children];
+      newChildren.splice(insertIdx, 0, newLeaf);
+      return { ...node, children: newChildren };
+    }
+    if (node.type === "leaf") return node;
+    const childIdx = path[depth];
+    return {
+      ...node,
+      children: node.children.map((child, i) =>
+        i === childIdx ? rebuild(child, depth + 1) : child,
+      ),
+    };
+  }
+
+  return rebuild(tree, 0);
+}
+
+/**
+ * Return the IDs of all leaves that share the same row as `tabId`.
+ *
+ * The "row" is the lowest ancestor whose parent is a vertical split (rows
+ * container), or the root if no vertical ancestor exists. Returns an empty
+ * array if `tabId` isn't in the tree.
+ */
+export function getRowLeafIds(
+  tree: SplitLayoutNode,
+  tabId: number,
+): number[] {
+  function findPath(
+    node: SplitLayoutNode,
+    target: number,
+    acc: number[],
+  ): number[] | null {
+    if (node.type === "leaf") {
+      return node.tabId === target ? acc : null;
+    }
+    for (let i = 0; i < node.children.length; i++) {
+      const sub = findPath(node.children[i], target, [...acc, i]);
+      if (sub) return sub;
+    }
+    return null;
+  }
+
+  const path = findPath(tree, tabId, []);
+  if (!path) return [];
+
+  const chain: SplitLayoutNode[] = [tree];
+  for (const idx of path) {
+    const last = chain[chain.length - 1];
+    if (last.type !== "split") break;
+    chain.push(last.children[idx]);
+  }
+
+  // Find the lowest ancestor whose parent is vertical, or the root if none.
+  let rowDepth = 0;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (i === 0) {
+      rowDepth = 0;
+      break;
+    }
+    const parent = chain[i - 1];
+    if (parent.type === "split" && parent.direction === "vertical") {
+      rowDepth = i;
+      break;
+    }
+  }
+
+  return getLeafIds(chain[rowDepth]);
+}
+
+/**
+ * Maximize a leaf so it takes over its full visual column or row.
+ *
+ * The displaced tabs (the ones the maxed leaf is shoving aside) are not
+ * dropped from the layout — they are appended as a new bottom row of the
+ * tree so they remain reachable in the split view.
+ *
+ * Examples (axis = "column"):
+ *
+ *   3x3 grid:
+ *     vertical[ horizontal[A,B,C], horizontal[D,E,F], horizontal[G,H,I] ]
+ *     + max-column on B
+ *     → vertical[
+ *         horizontal[ vertical[A,D,G], B, vertical[C,F,I] ],
+ *         horizontal[E, H]   ← E and H displaced as a new bottom row
+ *       ]
+ *
+ *   horizontal[X, vertical[A, B], Z] + max-column on A
+ *     → vertical[ horizontal[X, A, Z], B ]
+ *
+ * Examples (axis = "row"):
+ *
+ *   3x3 grid + max-row on B
+ *     → vertical[
+ *         B,                           ← B alone, full top row
+ *         horizontal[D, E, F],
+ *         horizontal[G, H, I],
+ *         horizontal[A, C]             ← displaced row siblings
+ *       ]
+ */
+export function maximizeAlongAxis(
+  tree: SplitLayoutNode,
+  tabId: number,
+  axis: "column" | "row",
+): SplitLayoutNode {
+  function findPath(
+    node: SplitLayoutNode,
+    target: number,
+    acc: number[],
+  ): number[] | null {
+    if (node.type === "leaf") {
+      return node.tabId === target ? acc : null;
+    }
+    for (let i = 0; i < node.children.length; i++) {
+      const sub = findPath(node.children[i], target, [...acc, i]);
+      if (sub) return sub;
+    }
+    return null;
+  }
+
+  const path = findPath(tree, tabId, []);
+  if (!path) return tree;
+
+  // Walk root → leaf collecting nodes
+  const chain: SplitLayoutNode[] = [tree];
+  for (const idx of path) {
+    const last = chain[chain.length - 1];
+    if (last.type !== "split") break;
+    chain.push(last.children[idx]);
+  }
+  // chain[0] = root, chain[chain.length - 1] = leaf
+
+  const leafLeaf: SplitLayoutNode = { type: "leaf", tabId };
+
+  // Helper: append `displaced` as a new bottom row of `outer`
+  const appendBottomRow = (
+    outer: SplitLayoutNode,
+    displaced: SplitLayoutNode[],
+  ): SplitLayoutNode => {
+    if (displaced.length === 0) return outer;
+    const row: SplitLayoutNode =
+      displaced.length === 1
+        ? displaced[0]
+        : { type: "split", direction: "horizontal", children: displaced };
+    if (outer.type === "split" && outer.direction === "vertical") {
+      return { ...outer, children: [...outer.children, row] };
+    }
+    return {
+      type: "split",
+      direction: "vertical",
+      children: [outer, row],
+    };
+  };
+
+  // Helper: replace a node along the path at depth `targetDepth` with `replacement`
+  const replaceAtDepth = (
+    targetDepth: number,
+    replacement: SplitLayoutNode,
+  ): SplitLayoutNode => {
+    function rebuild(
+      node: SplitLayoutNode,
+      depth: number,
+    ): SplitLayoutNode {
+      if (depth === targetDepth) return replacement;
+      if (node.type === "leaf") return node;
+      const childIdx = path[depth];
+      return {
+        ...node,
+        children: node.children.map((child, i) =>
+          i === childIdx ? rebuild(child, depth + 1) : child,
+        ),
+      };
+    }
+    return rebuild(tree, 0);
+  };
+
+  // ─── ROW MAXIMIZE ─────────────────────────────────────────────────────
+  if (axis === "row") {
+    // Find the lowest ancestor whose parent is vertical (or root if none).
+    // That ancestor IS the row we want the leaf to take over.
+    let rowDepth = 0;
+    for (let i = chain.length - 1; i >= 0; i--) {
+      if (i === 0) {
+        rowDepth = 0;
+        break;
+      }
+      const parent = chain[i - 1];
+      if (parent.type === "split" && parent.direction === "vertical") {
+        rowDepth = i;
+        break;
+      }
+    }
+
+    const rowNode = chain[rowDepth];
+    const allInRow = getLeafIds(rowNode);
+    const displaced: SplitLayoutNode[] = allInRow
+      .filter((id) => id !== tabId)
+      .map((id) => ({ type: "leaf", tabId: id }));
+
+    if (rowDepth === 0) {
+      // Whole tree is the "row" — leaf replaces everything, displaced go below
+      return appendBottomRow(leafLeaf, displaced);
+    }
+
+    const modified = replaceAtDepth(rowDepth, leafLeaf);
+    return appendBottomRow(modified, displaced);
+  }
+
+  // ─── COLUMN MAXIMIZE ──────────────────────────────────────────────────
+  // Case A: leaf's parent is a vertical split (leaf is already a column-cell)
+  if (chain.length >= 2) {
+    const parent = chain[chain.length - 2];
+    if (parent.type === "split" && parent.direction === "vertical") {
+      const colDepth = chain.length - 2;
+      const allInCol = getLeafIds(parent);
+      const displaced: SplitLayoutNode[] = allInCol
+        .filter((id) => id !== tabId)
+        .map((id) => ({ type: "leaf", tabId: id }));
+      const modified = replaceAtDepth(colDepth, leafLeaf);
+      return appendBottomRow(modified, displaced);
+    }
+  }
+
+  // Case B: leaf's parent is a horizontal split (a row), and grandparent is
+  // a vertical split (a row-major grid). Restructure that grid so the leaf
+  // becomes a full-height column at its column position.
+  if (chain.length >= 3) {
+    const parent = chain[chain.length - 2];
+    const grandparent = chain[chain.length - 3];
+    if (
+      parent.type === "split" &&
+      parent.direction === "horizontal" &&
+      grandparent.type === "split" &&
+      grandparent.direction === "vertical"
+    ) {
+      const grandparentDepth = chain.length - 3;
+      const colIndex = path[path.length - 1];
+      const parentRowIdx = path[path.length - 2];
+
+      const leftCellsByRow: SplitLayoutNode[][] = [];
+      const rightCellsByRow: SplitLayoutNode[][] = [];
+      const displaced: SplitLayoutNode[] = [];
+
+      grandparent.children.forEach((row, i) => {
+        if (row.type === "split" && row.direction === "horizontal") {
+          const leftPart = row.children.slice(0, colIndex);
+          const middleCell =
+            colIndex < row.children.length ? row.children[colIndex] : undefined;
+          const rightPart = row.children.slice(colIndex + 1);
+
+          leftCellsByRow.push(leftPart);
+          rightCellsByRow.push(rightPart);
+
+          if (middleCell && i !== parentRowIdx) {
+            // Other row's middle cell — displaced (leaf's own row's middle is the leaf itself)
+            displaced.push(middleCell);
+          }
+        } else if (row.type === "leaf") {
+          // Single-tab row spans the full width visually, so the column being
+          // maximized passes right through it — displace this leaf.
+          leftCellsByRow.push([]);
+          rightCellsByRow.push([]);
+          displaced.push(row);
+        } else {
+          // Row is a non-horizontal split (e.g., a vertical column container).
+          // Pull every leaf inside it into the displaced bucket so the column
+          // can run unobstructed across the full grid height.
+          leftCellsByRow.push([]);
+          rightCellsByRow.push([]);
+          getLeafIds(row).forEach((leafId) => {
+            displaced.push({ type: "leaf", tabId: leafId });
+          });
+        }
+      });
+
+      const buildColumn = (
+        cellsByRow: SplitLayoutNode[][],
+      ): SplitLayoutNode | null => {
+        const rowNodes: SplitLayoutNode[] = [];
+        for (const cells of cellsByRow) {
+          if (cells.length === 0) continue;
+          if (cells.length === 1) rowNodes.push(cells[0]);
+          else
+            rowNodes.push({
+              type: "split",
+              direction: "horizontal",
+              children: cells,
+            });
+        }
+        if (rowNodes.length === 0) return null;
+        if (rowNodes.length === 1) return rowNodes[0];
+        return { type: "split", direction: "vertical", children: rowNodes };
+      };
+
+      const leftColumn = buildColumn(leftCellsByRow);
+      const rightColumn = buildColumn(rightCellsByRow);
+
+      const sliceChildren: SplitLayoutNode[] = [];
+      if (leftColumn) sliceChildren.push(leftColumn);
+      sliceChildren.push(leafLeaf);
+      if (rightColumn) sliceChildren.push(rightColumn);
+
+      const newSlice: SplitLayoutNode =
+        sliceChildren.length === 1
+          ? sliceChildren[0]
+          : {
+              type: "split",
+              direction: "horizontal",
+              children: sliceChildren,
+            };
+
+      const modified = replaceAtDepth(grandparentDepth, newSlice);
+      return appendBottomRow(modified, displaced);
+    }
+  }
+
+  // Fallback: leaf is on its own at the root, or in an unsupported config.
+  // Just replace whatever is at the leaf's path with the leaf and displace
+  // siblings to a new bottom row (if there are any).
+  if (chain.length === 1) return tree; // leaf is the root already
+  const parent = chain[chain.length - 2];
+  if (parent.type !== "split") return tree;
+  const parentDepth = chain.length - 2;
+  const allInParent = getLeafIds(parent);
+  const displaced: SplitLayoutNode[] = allInParent
+    .filter((id) => id !== tabId)
+    .map((id) => ({ type: "leaf", tabId: id }));
+  const modified = replaceAtDepth(parentDepth, leafLeaf);
+  return appendBottomRow(modified, displaced);
 }
 
 /**

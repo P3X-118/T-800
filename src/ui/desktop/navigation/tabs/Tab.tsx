@@ -27,7 +27,9 @@ interface TabProps {
   title?: string;
   isActive?: boolean;
   isSplit?: boolean;
-  onActivate?: () => void;
+  isMultiSelected?: boolean;
+  onActivate?: (ctrlKey?: boolean) => void;
+  onMultiSelectContextMenu?: (e: React.MouseEvent) => void;
   onClose?: () => void;
   onSplit?: () => void;
   canSplit?: boolean;
@@ -41,6 +43,7 @@ interface TabProps {
   isHoveredDropTarget?: boolean;
   hostConfig?: SSHHost;
   onRename?: (newTitle: string) => void;
+  onAddToSplit?: () => void;
   onSplitAll?: () => void;
 }
 
@@ -49,7 +52,9 @@ export function Tab({
   title,
   isActive,
   isSplit = false,
+  isMultiSelected = false,
   onActivate,
+  onMultiSelectContextMenu,
   onClose,
   onSplit,
   canSplit = false,
@@ -63,6 +68,7 @@ export function Tab({
   isHoveredDropTarget = false,
   hostConfig,
   onRename,
+  onAddToSplit,
   onSplitAll,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
@@ -240,20 +246,31 @@ export function Tab({
       <>
         <div
           className={cn(tabBaseClasses, "cursor-pointer")}
-          onClick={!disableActivate ? onActivate : undefined}
-          onContextMenu={
-            onRename
-              ? (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setContextMenu({ x: e.clientX, y: e.clientY });
-                }
+          onClick={
+            !disableActivate
+              ? (e) => onActivate?.(e.ctrlKey || e.metaKey)
               : undefined
+          }
+          onContextMenu={
+            onMultiSelectContextMenu
+              ? onMultiSelectContextMenu
+              : onRename
+                ? (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY });
+                  }
+                : undefined
           }
           style={{
             marginBottom: "-2px",
-            borderBottom:
-              isActive || isSplit ? "2px solid var(--foreground)" : "none",
+            // White underline for Ctrl+click multi-selection; regular
+            // foreground underline for the active/split tab.
+            borderBottom: isMultiSelected
+              ? "2px solid #ffffff"
+              : isActive || isSplit
+                ? "2px solid var(--foreground)"
+                : "none",
           }}
         >
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -377,6 +394,18 @@ export function Tab({
             <Pencil className="w-3.5 h-3.5" />
             Rename
           </button>
+          {onAddToSplit && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                onAddToSplit();
+                setContextMenu(null);
+              }}
+            >
+              <SeparatorVertical className="w-3.5 h-3.5" />
+              Add to Split View
+            </button>
+          )}
           {onSplitAll && (
             <button
               className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"

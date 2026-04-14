@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { TOTPSetup } from "@/ui/desktop/user/TOTPSetup.tsx";
+import { WebAuthnSetup } from "@/ui/desktop/user/WebAuthnSetup.tsx";
 import {
   getUserInfo,
   getVersionInfo,
@@ -151,7 +152,7 @@ export function UserProfile({
     setEnableTerminalSessionPersistence,
   ] = useState<boolean>(() => {
     const saved = localStorage.getItem("enableTerminalSessionPersistence");
-    return saved === "true";
+    return saved !== "false";
   });
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
 
@@ -730,6 +731,10 @@ export function UserProfile({
                   isEnabled={userInfo.totp_enabled}
                   onStatusChange={handleTOTPStatusChange}
                 />
+
+                <div className="border-t border-edge pt-4">
+                  <WebAuthnSetup />
+                </div>
 
                 {(!userInfo.is_oidc || userInfo.is_dual_auth) && (
                   <PasswordReset userInfo={userInfo} />

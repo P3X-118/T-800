@@ -15,13 +15,27 @@ import type {
   DropPosition,
 } from "@/ui/desktop/navigation/tabs/splitLayout.ts";
 import {
+  getRowLeafIds,
+  getLeafIds,
+  findLeaf,
+} from "@/ui/desktop/navigation/tabs/splitLayout.ts";
+import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable.tsx";
 import * as ResizablePrimitive from "react-resizable-panels";
 import { useSidebar } from "@/components/ui/sidebar.tsx";
-import { RefreshCcw } from "lucide-react";
+import {
+  RefreshCcw,
+  Columns2,
+  Rows2,
+  X,
+  Pencil,
+  Maximize2,
+  Minimize2,
+  Copy,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
 import {
@@ -143,20 +157,25 @@ export function AppView({
   const {
     tabs,
     currentTab,
+    setCurrentTab,
     allSplitScreenTab,
     splitLayout,
     removeTab,
     updateTab,
+    addTab,
     tabDragToSplit,
     setDragOverTerminalArea,
     executeDragSplit,
     setSplitScreenTabs,
+    setSplitLayout,
+    splitPanelAt,
     swapInSplitLayout,
     addToSplitRoot,
     cancelTabDragToSplit,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
+    setCurrentTab: (id: number) => void;
     allSplitScreenTab: number[];
     splitLayout: SplitLayoutNode | null;
     removeTab: (id: number) => void;
@@ -164,7 +183,20 @@ export function AppView({
       tabId: number,
       updates: Partial<Omit<TabData, "id">>,
     ) => void;
+    addTab: (tab: {
+      type: string;
+      title?: string;
+      hostConfig?: unknown;
+      connectionConfig?: unknown;
+      [key: string]: unknown;
+    }) => number;
     setSplitScreenTabs: (tabIds: number[]) => void;
+    setSplitLayout: (layout: SplitLayoutNode | null) => void;
+    splitPanelAt: (
+      targetTabId: number,
+      newTabId: number,
+      position: DropPosition,
+    ) => void;
     tabDragToSplit: {
       draggedTabId: number;
       isOverTerminalArea: boolean;
@@ -219,6 +251,248 @@ export function AppView({
     hoverTabId: number | null;
   } | null>(null);
 
+  const [panelContextMenu, setPanelContextMenu] = useState<{
+    tabId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const [panelEditingTabId, setPanelEditingTabId] = useState<number | null>(
+    null,
+  );
+  const [panelEditValue, setPanelEditValue] = useState("");
+  const panelEditInputRef = useRef<HTMLInputElement | null>(null);
+
+  // "Focus mode" — a single terminal zooms to fill the container on top of
+  // the split layout. Escape or the toggle button exits.
+  const [focusedTabId, setFocusedTabId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (focusedTabId === null) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setFocusedTabId(null);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [focusedTabId]);
+
+  useEffect(() => {
+    if (panelEditingTabId !== null && panelEditInputRef.current) {
+      panelEditInputRef.current.focus();
+      panelEditInputRef.current.select();
+    }
+  }, [panelEditingTabId]);
+
+  useEffect(() => {
+    if (!panelContextMenu) return;
+    const close = () => setPanelContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+    };
+  }, [panelContextMenu]);
+
+  const _leaf = (id: number): SplitLayoutNode => ({
+    type: "leaf" as const,
+    tabId: id,
+  });
+  const _vStack = (ids: number[]): SplitLayoutNode =>
+    ids.length === 1
+      ? _leaf(ids[0])
+      : { type: "split", direction: "vertical", children: ids.map(_leaf) };
+  const _hStack = (ids: number[]): SplitLayoutNode =>
+    ids.length === 1
+      ? _leaf(ids[0])
+      : { type: "split", direction: "horizontal", children: ids.map(_leaf) };
+
+  // Max Column: selected tab becomes a full-height column.
+  // Works on any tree shape: finds which top-level column the tab lives in,
+  // removes it, makes it a standalone column, and pushes displaced siblings
+  // to the nearest neighbour column.
+  // Duplicate a split-view panel: opens a new terminal to the same host
+  // and inserts it directly adjacent to the source panel in the layout.
+  const duplicateTerminalForTab = (tabId: number) => {
+    const source = tabs.find((t: TabData) => t.id === tabId);
+    if (!source) return;
+    // Strip runtime-only fields so the new tab doesn't inherit a stale
+    // terminal ref or instanceId.
+    const { id: _id, terminalRef: _ref, instanceId: _inst, ...rest } = source;
+    void _id;
+    void _ref;
+    void _inst;
+    const newTabId = addTab({
+      ...(rest as Record<string, unknown>),
+      type: source.type,
+      title: source.title,
+      hostConfig: source.hostConfig,
+      connectionConfig: source.connectionConfig,
+    });
+    if (newTabId <= 0) return;
+    // Insert the duplicate adjacent to the original. splitPanelAt handles
+    // the case where the layout doesn't exist yet by creating a 2-pane one.
+    splitPanelAt(tabId, newTabId, "right");
+    setCurrentTab(newTabId);
+  };
+
+  const maxColumnForTab = (tabId: number) => {
+    if (!splitLayout || splitLayout.type === "leaf") return;
+
+    // Strategy: normalize the current layout into a list of columns,
+    // where each "column" is a list of tab IDs stacked vertically.
+    // Then replace the column containing tabId with just tabId,
+    // pushing displaced tabs to the nearest neighbour.
+    const columns: number[][] = [];
+
+    if (splitLayout.direction === "horizontal") {
+      // Root is already column-based (e.g. result of a prior Max Column)
+      for (const child of splitLayout.children) {
+        columns.push(getLeafIds(child));
+      }
+    } else {
+      // Root is vertical (row-major grid). Transpose rows → columns.
+      const rows: number[][] = [];
+      for (const child of splitLayout.children) {
+        if (child.type === "leaf") {
+          rows.push([child.tabId]);
+        } else if (child.direction === "horizontal") {
+          rows.push(getLeafIds(child));
+        } else {
+          rows.push(getLeafIds(child));
+        }
+      }
+      const maxCols = Math.max(...rows.map((r) => r.length));
+      for (let c = 0; c < maxCols; c++) {
+        const col: number[] = [];
+        for (const row of rows) {
+          if (c < row.length) col.push(row[c]);
+        }
+        columns.push(col);
+      }
+    }
+
+    // Find which column contains the target
+    let targetColIdx = columns.findIndex((col) => col.includes(tabId));
+    if (targetColIdx < 0) targetColIdx = 0;
+
+    // Collect displaced tabs (others in the same column)
+    const displaced = columns[targetColIdx].filter((id) => id !== tabId);
+
+    // Push displaced to nearest neighbour
+    const neighborIdx =
+      targetColIdx > 0
+        ? targetColIdx - 1
+        : targetColIdx < columns.length - 1
+          ? targetColIdx + 1
+          : -1;
+
+    // Build new columns
+    const newColumns: number[][] = [];
+    for (let c = 0; c < columns.length; c++) {
+      if (c === targetColIdx) {
+        newColumns.push([tabId]);
+      } else {
+        const base = columns[c].filter((id) => id !== tabId);
+        if (c === neighborIdx) {
+          newColumns.push([...base, ...displaced]);
+        } else {
+          newColumns.push(base);
+        }
+      }
+    }
+
+    // Build the tree
+    const hChildren: SplitLayoutNode[] = newColumns
+      .filter((col) => col.length > 0)
+      .map((col) => _vStack(col));
+
+    if (hChildren.length <= 1) {
+      setSplitLayout(_leaf(tabId));
+    } else {
+      setSplitLayout({
+        type: "split",
+        direction: "horizontal",
+        children: hChildren,
+      });
+    }
+    setResetKey((k) => k + 1);
+    requestAnimationFrame(() => scheduleMeasureAndFit());
+  };
+
+  // Max Row: selected tab becomes a full-width row.
+  // Normalizes into rows, replaces the target row with just tabId,
+  // pushes displaced siblings to the nearest neighbour row.
+  const maxRowForTab = (tabId: number) => {
+    if (!splitLayout || splitLayout.type === "leaf") return;
+
+    const rows: number[][] = [];
+
+    if (splitLayout.direction === "vertical") {
+      // Root is already row-based
+      for (const child of splitLayout.children) {
+        rows.push(getLeafIds(child));
+      }
+    } else {
+      // Root is horizontal (column-major). Transpose columns → rows.
+      const columns: number[][] = [];
+      for (const child of splitLayout.children) {
+        columns.push(getLeafIds(child));
+      }
+      const maxRows = Math.max(...columns.map((c) => c.length));
+      for (let r = 0; r < maxRows; r++) {
+        const row: number[] = [];
+        for (const col of columns) {
+          if (r < col.length) row.push(col[r]);
+        }
+        rows.push(row);
+      }
+    }
+
+    let targetRowIdx = rows.findIndex((row) => row.includes(tabId));
+    if (targetRowIdx < 0) targetRowIdx = 0;
+
+    const displaced = rows[targetRowIdx].filter((id) => id !== tabId);
+    const neighborIdx =
+      targetRowIdx > 0
+        ? targetRowIdx - 1
+        : targetRowIdx < rows.length - 1
+          ? targetRowIdx + 1
+          : -1;
+
+    const newRows: number[][] = [];
+    for (let r = 0; r < rows.length; r++) {
+      if (r === targetRowIdx) {
+        newRows.push([tabId]);
+      } else {
+        const base = rows[r].filter((id) => id !== tabId);
+        if (r === neighborIdx) {
+          newRows.push([...base, ...displaced]);
+        } else {
+          newRows.push(base);
+        }
+      }
+    }
+
+    const vChildren: SplitLayoutNode[] = newRows
+      .filter((row) => row.length > 0)
+      .map((row) => _hStack(row));
+
+    if (vChildren.length <= 1) {
+      setSplitLayout(_leaf(tabId));
+    } else {
+      setSplitLayout({
+        type: "split",
+        direction: "vertical",
+        children: vChildren,
+      });
+    }
+    setResetKey((k) => k + 1);
+    requestAnimationFrame(() => scheduleMeasureAndFit());
+  };
+
   const [externalDropTarget, setExternalDropTarget] = useState<{
     tabId: number;
     position: DropPosition;
@@ -241,7 +515,9 @@ export function AppView({
 
   const fitActiveAndNotify = React.useCallback(() => {
     const visibleIds: number[] = [];
-    if (allSplitScreenTab.length === 0) {
+    const currentTabInSplit =
+      currentTab !== null && allSplitScreenTab.includes(currentTab);
+    if (allSplitScreenTab.length === 0 || !currentTabInSplit) {
       if (currentTab) visibleIds.push(currentTab);
     } else {
       const splitIds = allSplitScreenTab as number[];
@@ -332,6 +608,33 @@ export function AppView({
     rightSidebarWidth,
   ]);
 
+  // Re-fit terminals when focus mode changes. Delay to let the 250ms
+  // CSS animation finish so .fit() measures the final dimensions.
+  // Also auto-focus the terminal so the cursor is active.
+  useEffect(() => {
+    // Fit once immediately (good enough for most cases)
+    requestAnimationFrame(() => fitActiveAndNotify());
+
+    // Fit again after the animation completes (250ms) to get exact sizing
+    const timer = setTimeout(() => {
+      fitActiveAndNotify();
+
+      // Auto-focus the terminal
+      if (focusedTabId !== null) {
+        const focusedTab = terminalTabs.find(
+          (t: { id: number }) => t.id === focusedTabId,
+        );
+        if (focusedTab?.terminalRef?.current) {
+          const ref = focusedTab.terminalRef.current;
+          ref.focus?.();
+          ref.fit?.();
+        }
+      }
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [focusedTabId, fitActiveAndNotify, terminalTabs]);
+
   useEffect(() => {
     const roContainer = containerRef.current
       ? new ResizeObserver(() => {
@@ -361,6 +664,129 @@ export function AppView({
     terminalTabs.forEach((t) => terminalIdMapRef.current.add(t.id));
   }, [terminalTabs]);
 
+  // Render the layered drop-zone overlay for a single panel.
+  // Includes max-row/column zones (outer 10%) and split zones (inner 15%).
+  const renderPanelDropZones = (params: {
+    keyPrefix: string;
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+    isSamePanel: (pos: DropPosition) => boolean;
+    handleEnter: (pos: DropPosition) => void;
+    handleLeave: (pos: DropPosition) => void;
+    handleDrop: (pos: DropPosition) => void;
+    centerLabel: string;
+    baseZIndex: number;
+  }) => {
+    const {
+      keyPrefix,
+      top,
+      left,
+      width,
+      height,
+      isSamePanel,
+      handleEnter,
+      handleLeave,
+      handleDrop,
+      centerLabel,
+      baseZIndex,
+    } = params;
+
+    const SPLIT_OUTER = 0.25; // edge zones span 25% of the panel
+
+    const edgeH = height * SPLIT_OUTER;
+    const edgeW = width * SPLIT_OUTER;
+    const centerH = height * (1 - 2 * SPLIT_OUTER);
+    const centerW = width * (1 - 2 * SPLIT_OUTER);
+
+    const zoneBase =
+      "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
+    const splitInactive =
+      "bg-blue-500/5 border border-dashed border-blue-500/30";
+    const splitActive = "bg-blue-500/30 border-2 border-blue-400";
+
+    const zone = (
+      pos: DropPosition,
+      style: React.CSSProperties,
+      label: string,
+    ) => {
+      const active = isSamePanel(pos);
+      const cls = `${zoneBase} ${active ? splitActive : splitInactive}`;
+      return (
+        <div
+          key={`${keyPrefix}-${pos}`}
+          className={cls}
+          style={{ ...style, zIndex: baseZIndex }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = "move";
+            handleEnter(pos);
+          }}
+          onDragLeave={() => handleLeave(pos)}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDrop(pos);
+          }}
+        >
+          {active && (
+            <span className="text-white text-[11px] font-semibold bg-blue-600/75 px-2 py-0.5 rounded whitespace-nowrap">
+              {label}
+            </span>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <React.Fragment key={keyPrefix}>
+        {/* Outline */}
+        <div
+          className="absolute pointer-events-none border-2 border-dashed border-blue-400/40 rounded"
+          style={{ top, left, width, height, zIndex: baseZIndex - 1 }}
+        />
+        {/* TOP */}
+        {zone("top", { top, left, width, height: edgeH }, "Split top")}
+        {/* BOTTOM */}
+        {zone(
+          "bottom",
+          { top: top + height - edgeH, left, width, height: edgeH },
+          "Split bottom",
+        )}
+        {/* LEFT */}
+        {zone(
+          "left",
+          { top: top + edgeH, left, width: edgeW, height: centerH },
+          "Split left",
+        )}
+        {/* RIGHT */}
+        {zone(
+          "right",
+          {
+            top: top + edgeH,
+            left: left + width - edgeW,
+            width: edgeW,
+            height: centerH,
+          },
+          "Split right",
+        )}
+        {/* CENTER */}
+        {zone(
+          "center",
+          {
+            top: top + edgeH,
+            left: left + edgeW,
+            width: centerW,
+            height: centerH,
+          },
+          centerLabel,
+        )}
+      </React.Fragment>
+    );
+  };
+
   const renderTerminalsLayer = () => {
     const styles: Record<number, React.CSSProperties> = {};
     const layoutTabs = allSplitScreenTab
@@ -369,7 +795,14 @@ export function AppView({
 
     const mainTab = terminalTabs.find((tab: TabData) => tab.id === currentTab);
 
-    if (allSplitScreenTab.length === 0 && mainTab) {
+    // If the current tab is NOT part of the active split view, show it full-screen
+    // instead of the split layout so navigating to a non-split tab actually works.
+    const currentTabInSplit =
+      currentTab !== null && allSplitScreenTab.includes(currentTab);
+    const showFullScreenSingle =
+      (allSplitScreenTab.length === 0 || !currentTabInSplit) && !!mainTab;
+
+    if (showFullScreenSingle && mainTab) {
       const isFileManagerTab =
         mainTab.type === "file_manager" ||
         mainTab.type === "tunnel" ||
@@ -413,11 +846,12 @@ export function AppView({
     const sortedTerminalTabs = [...terminalTabs].sort((a, b) => a.id - b.id);
 
     return (
-      <div className="absolute inset-0 z-[1]">
+      <div className={`absolute inset-0 ${focusedTabId !== null ? "z-[10]" : "z-[1]"}`}>
         {sortedTerminalTabs.map((t: TabData) => {
           const hasStyle = !!styles[t.id];
+          const isFocused = focusedTabId === t.id;
           const isVisible =
-            hasStyle || (allSplitScreenTab.length === 0 && t.id === currentTab);
+            hasStyle || (showFullScreenSingle && t.id === currentTab);
 
           const effectiveVisible = isVisible;
 
@@ -436,25 +870,79 @@ export function AppView({
             bottom: isFileManagerTab ? 0 : 4,
           };
 
-          const finalStyle: React.CSSProperties = hasStyle
-            ? { ...styles[t.id], overflow: "hidden" }
-            : effectiveVisible
+          let finalStyle: React.CSSProperties;
+
+          const animTransition =
+            "top 250ms ease, left 250ms ease, right 250ms ease, bottom 250ms ease, width 250ms ease, height 250ms ease, opacity 200ms ease";
+
+          if (isFocused) {
+            // Focused: expand to fill the container below the 28px title bar
+            finalStyle = {
+              position: "absolute",
+              top: 28,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 99,
+              display: "block",
+              pointerEvents: "auto",
+              opacity: 1,
+              overflow: "hidden",
+              transition: animTransition,
+            };
+          } else if (focusedTabId !== null) {
+            // Another terminal is focused — dim this one
+            finalStyle = hasStyle
               ? {
-                  ...(previousStyle || standardStyle),
-                  opacity: 1,
-                  pointerEvents: "auto",
-                  zIndex: 20,
-                  display: "block",
+                  ...styles[t.id],
                   overflow: "hidden",
+                  opacity: 0.15,
+                  transition: animTransition,
                 }
-              : ({
-                  ...(previousStyle || standardStyle),
-                  opacity: 0,
-                  pointerEvents: "none",
-                  zIndex: 0,
-                  display: "none",
-                  overflow: "hidden",
-                } as React.CSSProperties);
+              : effectiveVisible
+                ? {
+                    ...(previousStyle || standardStyle),
+                    opacity: 0.15,
+                    pointerEvents: "none",
+                    zIndex: 20,
+                    display: "block",
+                    overflow: "hidden",
+                    transition: animTransition,
+                  }
+                : {
+                    ...(previousStyle || standardStyle),
+                    opacity: 0,
+                    pointerEvents: "none",
+                    zIndex: 0,
+                    display: "none",
+                    overflow: "hidden",
+                  } as React.CSSProperties;
+          } else if (hasStyle) {
+            finalStyle = {
+              ...styles[t.id],
+              overflow: "hidden",
+              transition: animTransition,
+            };
+          } else if (effectiveVisible) {
+            finalStyle = {
+              ...(previousStyle || standardStyle),
+              opacity: 1,
+              pointerEvents: "auto",
+              zIndex: 20,
+              display: "block",
+              overflow: "hidden",
+              transition: animTransition,
+            };
+          } else {
+            finalStyle = {
+              ...(previousStyle || standardStyle),
+              opacity: 0,
+              pointerEvents: "none",
+              zIndex: 0,
+              display: "none",
+              overflow: "hidden",
+            } as React.CSSProperties;
+          }
 
           const isTerminal = t.type === "terminal";
           const terminalConfig = {
@@ -592,6 +1080,16 @@ export function AppView({
 
   const renderSplitOverlays = () => {
     if (!splitLayout || allSplitScreenTab.length === 0) return null;
+    // A single-leaf root isn't a real split — render nothing so the terminal
+    // shows in normal full-tab mode (and we avoid emitting a bare
+    // ResizablePanel without a ResizablePanelGroup parent, which throws).
+    if (splitLayout.type === "leaf") return null;
+    // If the user is viewing a tab that isn't part of the split, hide the
+    // split panel structure so we don't overlay it on top of the single-tab
+    // view.
+    if (currentTab !== null && !allSplitScreenTab.includes(currentTab)) {
+      return null;
+    }
 
     const handleStyle = {
       pointerEvents: "auto",
@@ -636,7 +1134,7 @@ export function AppView({
               ref={(el) => {
                 panelRefs.current[String(tab.id)] = el;
               }}
-              className="h-full w-full flex flex-col relative"
+              className="h-full w-full flex flex-col relative z-[25]"
             >
               <div
                 className={`bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[31] relative select-none ${
@@ -656,12 +1154,77 @@ export function AppView({
                   setTimeout(() => document.body.removeChild(dragEl), 0);
                   setPanelDrag({ sourceTabId: tab.id, hoverTabId: null });
                 }}
-                onDragEnd={() => setPanelDrag(null)}
+                onDragEnd={() => {
+                  setPanelDrag(null);
+                  setOuterDropEdge(null);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setPanelContextMenu({
+                    tabId: tab.id,
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setFocusedTabId(
+                    focusedTabId === tab.id ? null : tab.id,
+                  );
+                }}
               >
-                {tab.title}
-                {tab.id === firstLeafId && (
-                  <ResetButton onClick={handleReset} />
+                {panelEditingTabId === tab.id ? (
+                  <input
+                    ref={panelEditInputRef}
+                    className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-[13px] h-[22px] leading-[22px] w-[200px] tracking-[1px]"
+                    value={panelEditValue}
+                    onChange={(e) => setPanelEditValue(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        const trimmed = panelEditValue.trim();
+                        if (trimmed) updateTab(tab.id, { title: trimmed });
+                        setPanelEditingTabId(null);
+                      } else if (e.key === "Escape") {
+                        setPanelEditingTabId(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = panelEditValue.trim();
+                      if (trimmed) updateTab(tab.id, { title: trimmed });
+                      setPanelEditingTabId(null);
+                    }}
+                  />
+                ) : (
+                  <span className="truncate flex-1">{tab.title}</span>
                 )}
+                <div className="absolute right-0 top-0 flex items-center h-[28px]">
+                  <button
+                    className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFocusedTabId(
+                        focusedTabId === tab.id ? null : tab.id,
+                      );
+                    }}
+                    title={
+                      focusedTabId === tab.id
+                        ? "Restore split view"
+                        : "Maximize terminal"
+                    }
+                  >
+                    {focusedTabId === tab.id ? (
+                      <Minimize2 className="h-3 w-3" />
+                    ) : (
+                      <Maximize2 className="h-3 w-3" />
+                    )}
+                  </button>
+                  {tab.id === firstLeafId && (
+                    <ResetButton onClick={handleReset} />
+                  )}
+                </div>
               </div>
             </div>
           </ResizablePanel>
@@ -811,7 +1374,32 @@ export function AppView({
       }
     >
       {renderTerminalsLayer()}
-      {renderSplitOverlays()}
+      <div className="relative z-[2]" style={{ height: "100%", pointerEvents: "none" }}>
+        {renderSplitOverlays()}
+      </div>
+
+      {/* Title bar for the focused/zoomed terminal */}
+      {focusedTabId !== null && (() => {
+        const focusedTab = terminalTabs.find(
+          (t: TabData) => t.id === focusedTabId,
+        );
+        if (!focusedTab) return null;
+        return (
+          <div
+            className="absolute top-0 left-0 right-0 z-[15] bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] flex items-center justify-between select-none animate-in fade-in duration-200"
+            onDoubleClick={() => setFocusedTabId(null)}
+          >
+            <span className="truncate flex-1">{focusedTab.title}</span>
+            <button
+              className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+              onClick={() => setFocusedTabId(null)}
+              title="Restore split view (Esc)"
+            >
+              <Minimize2 className="h-3 w-3" />
+            </button>
+          </div>
+        );
+      })()}
 
       {panelDrag && allSplitScreenTab.length > 1 && (() => {
         const parentRect = containerRef.current?.getBoundingClientRect();
@@ -888,6 +1476,65 @@ export function AppView({
         );
       })()}
 
+      {/* Directional drop zones for panel drag (top/right/bottom/left/center) */}
+      {panelDrag && allSplitScreenTab.length > 1 && (() => {
+        const parentRect = containerRef.current?.getBoundingClientRect();
+        if (!parentRect) return null;
+
+        return (
+          <div className="absolute inset-0 z-[62] pointer-events-none">
+            {allSplitScreenTab
+              .filter((tabId) => tabId !== panelDrag.sourceTabId)
+              .map((tabId) => {
+                const rect = panelRects[String(tabId)];
+                if (!rect) return null;
+
+                const top = rect.top - parentRect.top;
+                const left = rect.left - parentRect.left;
+                const width = rect.width;
+                const height = rect.height;
+
+                const isSamePanel = (pos: DropPosition) =>
+                  externalDropTarget?.tabId === tabId &&
+                  externalDropTarget.position === pos;
+
+                const handleEnter = (pos: DropPosition) =>
+                  setExternalDropTarget({ tabId, position: pos });
+                const handleLeave = (pos: DropPosition) => {
+                  if (
+                    externalDropTarget?.tabId === tabId &&
+                    externalDropTarget.position === pos
+                  ) {
+                    setExternalDropTarget(null);
+                  }
+                };
+                const handleDrop = (pos: DropPosition) => {
+                  executeDragSplit(panelDrag.sourceTabId, {
+                    tabId,
+                    position: pos,
+                  });
+                  setExternalDropTarget(null);
+                  setPanelDrag(null);
+                };
+
+                return renderPanelDropZones({
+                  keyPrefix: `pdrop-${tabId}`,
+                  top,
+                  left,
+                  width,
+                  height,
+                  isSamePanel,
+                  handleEnter,
+                  handleLeave,
+                  handleDrop,
+                  centerLabel: "Swap",
+                  baseZIndex: 63,
+                });
+              })}
+          </div>
+        );
+      })()}
+
       {tabDragToSplit?.isOverTerminalArea && (() => {
         const parentRect = containerRef.current?.getBoundingClientRect();
         if (!parentRect) return null;
@@ -927,13 +1574,6 @@ export function AppView({
               const width = rect.width;
               const height = rect.height;
 
-              const zoneBase =
-                "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
-              const zoneInactive =
-                "bg-blue-500/5 border border-dashed border-blue-500/30";
-              const zoneActive =
-                "bg-blue-500/30 border-2 border-blue-400";
-
               const handleEnter = (pos: DropPosition) =>
                 setExternalDropTarget({ tabId, position: pos });
               const handleLeave = (pos: DropPosition) => {
@@ -952,184 +1592,32 @@ export function AppView({
                 setExternalDropTarget(null);
               };
 
-              const edgeRatio = 0.25; // top/bottom/left/right zones
-              const centerWidth = width * (1 - 2 * edgeRatio);
-              const centerHeight = height * (1 - 2 * edgeRatio);
-              const edgeH = height * edgeRatio;
-              const edgeW = width * edgeRatio;
-
-              return (
-                <React.Fragment key={`drop-${tabId}`}>
-                  {/* Outline of target panel */}
-                  <div
-                    className="absolute pointer-events-none border-2 border-dashed border-blue-400/40 rounded"
-                    style={{ top, left, width, height, zIndex: 55 }}
-                  />
-                  {/* TOP */}
-                  <div
-                    className={`${zoneBase} ${
-                      isSamePanel("top") ? zoneActive : zoneInactive
-                    } rounded-t`}
-                    style={{
-                      top,
-                      left,
-                      width,
-                      height: edgeH,
-                      zIndex: 56,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      handleEnter("top");
-                    }}
-                    onDragLeave={() => handleLeave("top")}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDrop("top");
-                    }}
-                  >
-                    {isSamePanel("top") && (
-                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
-                        Split top
-                      </span>
-                    )}
-                  </div>
-                  {/* BOTTOM */}
-                  <div
-                    className={`${zoneBase} ${
-                      isSamePanel("bottom") ? zoneActive : zoneInactive
-                    } rounded-b`}
-                    style={{
-                      top: top + height - edgeH,
-                      left,
-                      width,
-                      height: edgeH,
-                      zIndex: 56,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      handleEnter("bottom");
-                    }}
-                    onDragLeave={() => handleLeave("bottom")}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDrop("bottom");
-                    }}
-                  >
-                    {isSamePanel("bottom") && (
-                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
-                        Split bottom
-                      </span>
-                    )}
-                  </div>
-                  {/* LEFT */}
-                  <div
-                    className={`${zoneBase} ${
-                      isSamePanel("left") ? zoneActive : zoneInactive
-                    }`}
-                    style={{
-                      top: top + edgeH,
-                      left,
-                      width: edgeW,
-                      height: centerHeight,
-                      zIndex: 56,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      handleEnter("left");
-                    }}
-                    onDragLeave={() => handleLeave("left")}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDrop("left");
-                    }}
-                  >
-                    {isSamePanel("left") && (
-                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
-                        Split left
-                      </span>
-                    )}
-                  </div>
-                  {/* RIGHT */}
-                  <div
-                    className={`${zoneBase} ${
-                      isSamePanel("right") ? zoneActive : zoneInactive
-                    }`}
-                    style={{
-                      top: top + edgeH,
-                      left: left + width - edgeW,
-                      width: edgeW,
-                      height: centerHeight,
-                      zIndex: 56,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      handleEnter("right");
-                    }}
-                    onDragLeave={() => handleLeave("right")}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDrop("right");
-                    }}
-                  >
-                    {isSamePanel("right") && (
-                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
-                        Split right
-                      </span>
-                    )}
-                  </div>
-                  {/* CENTER (replace/swap) */}
-                  <div
-                    className={`${zoneBase} ${
-                      isSamePanel("center") ? zoneActive : zoneInactive
-                    }`}
-                    style={{
-                      top: top + edgeH,
-                      left: left + edgeW,
-                      width: centerWidth,
-                      height: centerHeight,
-                      zIndex: 56,
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      e.dataTransfer.dropEffect = "move";
-                      handleEnter("center");
-                    }}
-                    onDragLeave={() => handleLeave("center")}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleDrop("center");
-                    }}
-                  >
-                    {isSamePanel("center") && (
-                      <span className="text-blue-100 text-xs font-medium bg-blue-600/70 px-2 py-0.5 rounded">
-                        Replace
-                      </span>
-                    )}
-                  </div>
-                </React.Fragment>
-              );
+              return renderPanelDropZones({
+                keyPrefix: `drop-${tabId}`,
+                top,
+                left,
+                width,
+                height,
+                isSamePanel,
+                handleEnter,
+                handleLeave,
+                handleDrop,
+                centerLabel: "Replace",
+                baseZIndex: 56,
+              });
             })}
           </div>
         );
       })()}
 
-      {/* Outer drop zones — create new outermost rows/columns */}
-      {tabDragToSplit?.isOverTerminalArea && (() => {
-        const OUTER_THICKNESS = 28; // px strip along each container edge
+      {/* Outer drop zones — Max Row / Max Column at the splitview edges.
+          Visible while dragging an external tab into split view OR while
+          repositioning a panel that's already in the split view. */}
+      {(tabDragToSplit?.isOverTerminalArea || panelDrag) && (() => {
+        const OUTER_THICKNESS = 56; // px strip along each container edge
+
+        const draggedId = tabDragToSplit?.draggedTabId ?? panelDrag?.sourceTabId;
+        if (draggedId == null) return null;
 
         const isActive = (edge: "top" | "right" | "bottom" | "left") =>
           outerDropEdge === edge;
@@ -1137,9 +1625,9 @@ export function AppView({
         const baseClass =
           "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
         const inactiveClass =
-          "bg-emerald-500/10 border border-dashed border-emerald-400/50";
+          "bg-violet-500/15 border border-dashed border-violet-400/60";
         const activeClass =
-          "bg-emerald-500/40 border-2 border-emerald-300";
+          "bg-violet-500/45 border-2 border-violet-300";
 
         const handleEnter = (edge: "top" | "right" | "bottom" | "left") =>
           setOuterDropEdge(edge);
@@ -1147,14 +1635,15 @@ export function AppView({
           if (outerDropEdge === edge) setOuterDropEdge(null);
         };
         const handleDrop = (edge: "top" | "right" | "bottom" | "left") => {
-          addToSplitRoot(tabDragToSplit.draggedTabId, edge);
+          addToSplitRoot(draggedId, edge);
           setOuterDropEdge(null);
           setExternalDropTarget(null);
-          cancelTabDragToSplit();
+          if (tabDragToSplit) cancelTabDragToSplit();
+          if (panelDrag) setPanelDrag(null);
         };
 
         return (
-          <div className="absolute inset-0 z-[58] pointer-events-none">
+          <div className="absolute inset-0 z-[65] pointer-events-none">
             {/* TOP edge — new row at top */}
             <div
               className={`${baseClass} ${
@@ -1180,8 +1669,8 @@ export function AppView({
               }}
             >
               {isActive("top") && (
-                <span className="text-emerald-50 text-xs font-semibold bg-emerald-700/80 px-2 py-0.5 rounded">
-                  + New row (top)
+                <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
+                  ↑ Max Row (top)
                 </span>
               )}
             </div>
@@ -1210,8 +1699,8 @@ export function AppView({
               }}
             >
               {isActive("bottom") && (
-                <span className="text-emerald-50 text-xs font-semibold bg-emerald-700/80 px-2 py-0.5 rounded">
-                  + New row (bottom)
+                <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
+                  ↓ Max Row (bottom)
                 </span>
               )}
             </div>
@@ -1240,8 +1729,8 @@ export function AppView({
               }}
             >
               {isActive("left") && (
-                <span className="text-emerald-50 text-[10px] font-semibold bg-emerald-700/80 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
-                  + New column
+                <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                  Max Column
                 </span>
               )}
             </div>
@@ -1270,14 +1759,102 @@ export function AppView({
               }}
             >
               {isActive("right") && (
-                <span className="text-emerald-50 text-[10px] font-semibold bg-emerald-700/80 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
-                  + New column
+                <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                  Max Column
                 </span>
               )}
             </div>
           </div>
         );
       })()}
+
+      {panelContextMenu && (
+        <div
+          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[160px]"
+          style={{
+            left: panelContextMenu.x,
+            top: panelContextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              const tab = tabs.find(
+                (t: TabData) => t.id === panelContextMenu.tabId,
+              );
+              if (tab) {
+                setPanelEditValue(tab.title);
+                setPanelEditingTabId(panelContextMenu.tabId);
+              }
+              setPanelContextMenu(null);
+            }}
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Rename
+          </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              duplicateTerminalForTab(panelContextMenu.tabId);
+              setPanelContextMenu(null);
+            }}
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Duplicate
+          </button>
+          <div className="border-t border-edge my-1" />
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              maxColumnForTab(panelContextMenu.tabId);
+              setPanelContextMenu(null);
+            }}
+          >
+            <Columns2 className="w-3.5 h-3.5" />
+            Max Column
+          </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              maxRowForTab(panelContextMenu.tabId);
+              setPanelContextMenu(null);
+            }}
+          >
+            <Rows2 className="w-3.5 h-3.5" />
+            Max Row
+          </button>
+          <div className="border-t border-edge my-1" />
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+            onClick={() => {
+              removeTab(panelContextMenu.tabId);
+              setPanelContextMenu(null);
+            }}
+          >
+            <X className="w-3.5 h-3.5" />
+            Close Terminal
+          </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+            onClick={() => {
+              if (splitLayout) {
+                const rowIds = getRowLeafIds(
+                  splitLayout,
+                  panelContextMenu.tabId,
+                );
+                rowIds.forEach((id) => removeTab(id));
+              } else {
+                removeTab(panelContextMenu.tabId);
+              }
+              setPanelContextMenu(null);
+            }}
+          >
+            <Rows2 className="w-3.5 h-3.5" />
+            Close Row
+          </button>
+        </div>
+      )}
     </div>
   );
 }

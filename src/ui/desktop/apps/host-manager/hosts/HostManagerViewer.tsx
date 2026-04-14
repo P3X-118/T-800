@@ -31,6 +31,7 @@ import {
   getSSHHosts,
   deleteSSHHost,
   bulkImportSSHHosts,
+  importSSHConfigFromDisk,
   bulkUpdateSSHHosts,
   updateSSHHost,
   renameFolder,
@@ -98,6 +99,10 @@ import type {
 import { DEFAULT_STATS_CONFIG } from "@/types/stats-widgets.ts";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
 import { FolderEditDialog } from "@/ui/desktop/apps/host-manager/dialogs/FolderEditDialog.tsx";
+import { SSHConfigMissingKeysDialog } from "@/ui/desktop/apps/host-manager/dialogs/SSHConfigImportDialog.tsx";
+import { SSHConfigUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/SSHConfigUploadDialog.tsx";
+import { AnsibleInventoryUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/AnsibleInventoryUploadDialog.tsx";
+import type { PendingKeyHost } from "@/ui/main-axios.ts";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 
 const INITIAL_HOSTS_PER_FOLDER = 12;
@@ -114,6 +119,13 @@ export function HostManagerViewer({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [importing, setImporting] = useState(false);
+  const [pendingKeyHosts, setPendingKeyHosts] = useState<PendingKeyHost[]>(
+    [],
+  );
+  const [missingKeysDialogOpen, setMissingKeysDialogOpen] = useState(false);
+  const [sshConfigUploadOpen, setSSHConfigUploadOpen] = useState(false);
+  const [ansibleInventoryUploadOpen, setAnsibleInventoryUploadOpen] =
+    useState(false);
   const overwriteRef = useRef(false);
   const [draggedHost, setDraggedHost] = useState<SSHHost | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -505,7 +517,9 @@ export function HostManagerViewer({
         }),
       );
       await fetchHosts();
+      await fetchFolderMetadata();
       window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+      window.dispatchEvent(new CustomEvent("folders:changed"));
       setEditingFolder(null);
       setEditingFolderName("");
     } catch {
@@ -843,6 +857,65 @@ export function HostManagerViewer({
     URL.revokeObjectURL(url);
   };
 
+  const handleSSHConfigImport = async (overwrite = false) => {
+    try {
+      setImporting(true);
+      const result = await importSSHConfigFromDisk(overwrite);
+      const parts: string[] = [];
+      if (result.success > 0) parts.push(`${result.success} created`);
+      if (result.updated > 0) parts.push(`${result.updated} updated`);
+      if (result.skipped > 0) parts.push(`${result.skipped} skipped (already exist)`);
+      if (result.failed > 0) parts.push(`${result.failed} failed`);
+      if (result.credentialsCreated > 0)
+        parts.push(`${result.credentialsCreated} credentials`);
+      if (result.proxyJumpResolved > 0)
+        parts.push(`${result.proxyJumpResolved} proxy-jump resolved`);
+      if (result.proxyJumpFailed > 0)
+        parts.push(`${result.proxyJumpFailed} proxy-jump unresolved`);
+
+      const pendingCount = result.pendingKeyHosts
+        ? result.pendingKeyHosts.reduce((n, p) => n + p.hostIds.length, 0)
+        : 0;
+      if (pendingCount > 0)
+        parts.push(`${pendingCount} awaiting keys`);
+
+      const summary = parts.length > 0 ? parts.join(", ") : "nothing imported";
+      if (result.success > 0 || result.updated > 0 || result.credentialsCreated > 0) {
+        toast.success(`SSH config: ${summary}`);
+      } else {
+        toast.message(`SSH config: ${summary}`);
+      }
+
+      const allErrors = [
+        ...(result.errors || []),
+        ...(result.credentialErrors || []),
+      ];
+      if (allErrors.length > 0) {
+        toast.error(`Issues: ${allErrors.slice(0, 5).join("; ")}`);
+      }
+
+      if (result.success > 0 || result.updated > 0) {
+        await fetchHosts();
+        window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+      }
+
+      // If the backend couldn't read some key files, prompt the user
+      // for them so we can fix up those hosts retroactively.
+      if (result.pendingKeyHosts && result.pendingKeyHosts.length > 0) {
+        setPendingKeyHosts(result.pendingKeyHosts);
+        setMissingKeysDialogOpen(true);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? `Failed to import ssh_config: ${err.message}`
+          : "Failed to import ssh_config",
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleJsonImport = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -1156,6 +1229,18 @@ export function HostManagerViewer({
                   }}
                 >
                   {t("hosts.importOverwriteExisting")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setSSHConfigUploadOpen(true)}
+                  disabled={importing}
+                >
+                  Import SSH Config
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setAnsibleInventoryUploadOpen(true)}
+                  disabled={importing}
+                >
+                  Import Ansible Inventory
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -2195,6 +2280,34 @@ export function HostManagerViewer({
             }}
           />
         )}
+
+        <SSHConfigMissingKeysDialog
+          open={missingKeysDialogOpen}
+          onOpenChange={setMissingKeysDialogOpen}
+          pendingKeyHosts={pendingKeyHosts}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
+
+        <SSHConfigUploadDialog
+          open={sshConfigUploadOpen}
+          onOpenChange={setSSHConfigUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
+
+        <AnsibleInventoryUploadDialog
+          open={ansibleInventoryUploadOpen}
+          onOpenChange={setAnsibleInventoryUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
 
         {selectionMode && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-popover border border-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-2 max-w-[90vw]">

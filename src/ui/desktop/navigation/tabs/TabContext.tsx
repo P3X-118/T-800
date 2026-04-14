@@ -19,6 +19,7 @@ import {
   swapLeaves as swapLeavesOp,
   removeLeaf as removeLeafOp,
   insertAtRoot as insertAtRootOp,
+  insertAdjacentRowOrColumn as insertAdjacentRowOrColumnOp,
   pruneLayout,
 } from "./splitLayout.js";
 
@@ -36,6 +37,7 @@ interface TabContextType {
   allSplitScreenTab: number[];
   splitLayout: SplitLayoutNode | null;
   addTab: (tab: Omit<Tab, "id">) => number;
+  addTabAfter: (afterTabId: number, tab: Omit<Tab, "id">) => number;
   removeTab: (tabId: number) => void;
   setCurrentTab: (tabId: number) => void;
   setSplitScreenTab: (tabId: number) => void;
@@ -89,9 +91,17 @@ interface TabProviderProps {
   children: ReactNode;
 }
 
+export function isPersistenceEnabled(): boolean {
+  // Default to true unless the user has explicitly disabled it
+  if (typeof window === "undefined") return true;
+  const saved = localStorage.getItem("enableTerminalSessionPersistence");
+  return saved !== "false";
+}
+
 export function clearT800SessionStorage() {
   localStorage.removeItem("t800_tabs");
   localStorage.removeItem("t800_currentTab");
+  localStorage.removeItem("t800_splitLayout");
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -105,12 +115,7 @@ export function clearT800SessionStorage() {
 export function TabProvider({ children }: TabProviderProps) {
   const { t } = useTranslation();
   const [tabs, setTabs] = useState<Tab[]>(() => {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    const isElectron =
-      typeof window !== "undefined" && !!(window as any).electronAPI;
-    const persistenceEnabled =
-      localStorage.getItem("enableTerminalSessionPersistence") === "true";
-    const shouldRestore = isMobile || isElectron || persistenceEnabled;
+    const shouldRestore = isPersistenceEnabled();
 
     if (!shouldRestore) {
       return [{ id: 1, type: "home", title: "Home" }];
@@ -160,8 +165,42 @@ export function TabProvider({ children }: TabProviderProps) {
     }
     return 1;
   });
-  const [splitLayout, setSplitLayoutState] =
-    useState<SplitLayoutNode | null>(null);
+  const [splitLayout, setSplitLayoutStateRaw] =
+    useState<SplitLayoutNode | null>(() => {
+      if (!isPersistenceEnabled()) return null;
+      try {
+        const saved = localStorage.getItem("t800_splitLayout");
+        if (!saved) return null;
+        const parsed = JSON.parse(saved) as SplitLayoutNode;
+        // Persisted single-leaf isn't a real split — discard.
+        if (parsed && parsed.type === "leaf") return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    });
+  // Always normalize: a single-leaf root isn't a real split.
+  const setSplitLayoutState = useCallback(
+    (
+      updater:
+        | SplitLayoutNode
+        | null
+        | ((prev: SplitLayoutNode | null) => SplitLayoutNode | null),
+    ) => {
+      setSplitLayoutStateRaw((prev) => {
+        const next =
+          typeof updater === "function"
+            ? (updater as (
+                p: SplitLayoutNode | null,
+              ) => SplitLayoutNode | null)(prev)
+            : updater;
+        if (!next) return null;
+        if (next.type === "leaf") return null;
+        return next;
+      });
+    },
+    [],
+  );
   const allSplitScreenTab = useMemo(
     () => getLeafIds(splitLayout),
     [splitLayout],
@@ -206,12 +245,7 @@ export function TabProvider({ children }: TabProviderProps) {
   const nextTabId = useRef(initialMaxId);
 
   useEffect(() => {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-    const isElectron =
-      typeof window !== "undefined" && !!(window as any).electronAPI;
-    const persistenceEnabled =
-      localStorage.getItem("enableTerminalSessionPersistence") === "true";
-    const shouldSave = isMobile || isElectron || persistenceEnabled;
+    const shouldSave = isPersistenceEnabled();
 
     if (shouldSave) {
       const serializable = tabs
@@ -224,6 +258,41 @@ export function TabProvider({ children }: TabProviderProps) {
       localStorage.removeItem("t800_currentTab");
     }
   }, [tabs, currentTab]);
+
+  useEffect(() => {
+    if (isPersistenceEnabled()) {
+      if (splitLayout) {
+        localStorage.setItem("t800_splitLayout", JSON.stringify(splitLayout));
+      } else {
+        localStorage.removeItem("t800_splitLayout");
+      }
+    } else {
+      localStorage.removeItem("t800_splitLayout");
+    }
+  }, [splitLayout]);
+
+  // Prune the restored split layout against the actual tab list (drops
+  // references to tabs that no longer exist).
+  const didPruneRef = useRef(false);
+  useEffect(() => {
+    if (didPruneRef.current) return;
+    if (!splitLayout) {
+      didPruneRef.current = true;
+      return;
+    }
+    const validIds = new Set(tabs.map((t) => t.id));
+    const leafIds = getLeafIds(splitLayout);
+    const hasMissing = leafIds.some((id) => !validIds.has(id));
+    if (hasMissing) {
+      const keep = leafIds.filter((id) => validIds.has(id));
+      if (keep.length === 0) {
+        setSplitLayoutState(null);
+      } else {
+        setSplitLayoutState(pruneLayout(splitLayout, new Set(keep)));
+      }
+    }
+    didPruneRef.current = true;
+  }, [tabs, splitLayout]);
 
   React.useEffect(() => {
     setTabs((prev) =>
@@ -335,6 +404,27 @@ export function TabProvider({ children }: TabProviderProps) {
     setTabs((prev) => [...prev, newTab]);
     setCurrentTab(id);
     setAllSplitScreenTab((prev) => prev.filter((tid) => tid !== id));
+    return id;
+  };
+
+  const addTabAfter = (
+    afterTabId: number,
+    tabData: Omit<Tab, "id">,
+  ): number => {
+    // Reuse addTab to create the tab (it appends to the end), then move
+    // it just after `afterTabId`. The functional setTabs updater chains,
+    // so the second update sees the array produced by addTab.
+    const id = addTab(tabData);
+    setTabs((prev) => {
+      const fromIdx = prev.findIndex((t) => t.id === id);
+      const afterIdx = prev.findIndex((t) => t.id === afterTabId);
+      if (fromIdx < 0 || afterIdx < 0 || fromIdx === afterIdx + 1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      const adjusted = fromIdx < afterIdx ? afterIdx : afterIdx + 1;
+      next.splice(adjusted, 0, moved);
+      return next;
+    });
     return id;
   };
 
@@ -513,6 +603,12 @@ export function TabProvider({ children }: TabProviderProps) {
     (targetTabId: number, newTabId: number, position: DropPosition) => {
       if (targetTabId === newTabId) return;
       setSplitLayoutState((prevLayout) => {
+        const isMax =
+          position === "max-top" ||
+          position === "max-bottom" ||
+          position === "max-left" ||
+          position === "max-right";
+
         if (!prevLayout) {
           // No split yet — start a 2-pane layout in the requested direction
           const newLeaf: SplitLayoutNode = { type: "leaf", tabId: newTabId };
@@ -521,10 +617,17 @@ export function TabProvider({ children }: TabProviderProps) {
             tabId: targetTabId,
           };
           const dir =
-            position === "top" || position === "bottom"
+            position === "top" ||
+            position === "bottom" ||
+            position === "max-top" ||
+            position === "max-bottom"
               ? "vertical"
               : "horizontal";
-          const insertBefore = position === "top" || position === "left";
+          const insertBefore =
+            position === "top" ||
+            position === "left" ||
+            position === "max-top" ||
+            position === "max-left";
           return {
             type: "split",
             direction: dir,
@@ -546,6 +649,23 @@ export function TabProvider({ children }: TabProviderProps) {
             ...getLeafIds(cleaned),
             newTabId,
           ]);
+        }
+        if (isMax) {
+          const axis: "row" | "column" =
+            position === "max-top" || position === "max-bottom"
+              ? "row"
+              : "column";
+          const side: "before" | "after" =
+            position === "max-top" || position === "max-left"
+              ? "before"
+              : "after";
+          return insertAdjacentRowOrColumnOp(
+            cleaned,
+            targetTabId,
+            axis,
+            side,
+            newTabId,
+          );
         }
         return splitLeafOp(cleaned, targetTabId, newTabId, position);
       });
@@ -693,6 +813,7 @@ export function TabProvider({ children }: TabProviderProps) {
       allSplitScreenTab,
       splitLayout,
       addTab,
+      addTabAfter,
       removeTab,
       setCurrentTab,
       setSplitScreenTab,
