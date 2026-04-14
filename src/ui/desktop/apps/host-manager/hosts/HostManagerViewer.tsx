@@ -1058,6 +1058,18 @@ export function HostManagerViewer({
                   >
                     {t("hosts.importOverwriteExisting")}
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setSSHConfigUploadOpen(true)}
+                    disabled={importing}
+                  >
+                    Import SSH Config
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setAnsibleInventoryUploadOpen(true)}
+                    disabled={importing}
+                  >
+                    Import Ansible Inventory
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -1124,6 +1136,24 @@ export function HostManagerViewer({
             </div>
           </div>
         </div>
+
+        <SSHConfigUploadDialog
+          open={sshConfigUploadOpen}
+          onOpenChange={setSSHConfigUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
+
+        <AnsibleInventoryUploadDialog
+          open={ansibleInventoryUploadOpen}
+          onOpenChange={setAnsibleInventoryUploadOpen}
+          onCompleted={() => {
+            fetchHosts();
+            window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          }}
+        />
       </TooltipProvider>
     );
   }
