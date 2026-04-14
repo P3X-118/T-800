@@ -21,13 +21,17 @@ services:
     container_name: t800-prod
     restart: unless-stopped
     ports:
-      # Bound to all host interfaces so Caddy can reach it over
-      # whichever network it happens to use. :8080 on this host is
-      # already claimed by another service, so we expose the
-      # container's :8080 on host :8181. Dev t800 uses :8180; prod
-      # uses :8181. Upstream access should still be gated at the
-      # network / firewall level.
-      - "8181:8080"
+      # This host serves BOTH t800.sgc.ai (production) and
+      # t1000.d.sgc.ai (dev-operating-like-prod) from a single
+      # container — they run the same image and share the same DB.
+      # The upstream Caddy at 169.254.0.36 routes:
+      #   t800.sgc.ai   → 169.254.0.123:8180
+      #   t1000.d.sgc.ai → <host>:8181
+      # So we expose both host ports to the same container:8080.
+      # :8080 on this host is claimed by another service (wasm-nix),
+      # which is why we avoid publishing on :8080 directly.
+      - "169.254.0.123:8180:8080"
+      - "0.0.0.0:8181:8080"
     volumes:
       - t800-prod-data:/app/data
     environment:
