@@ -1,0 +1,66 @@
+# T-800 production stack — t800.sgc.ai
+#
+# Fronted by an external Caddy reverse proxy at 169.254.0.36 over the
+# private mesh network. This compose file does not bundle TLS or a web
+# proxy; the container's own internal nginx serves the SPA + API on
+# port 8080 and Caddy terminates HTTPS upstream.
+#
+# Image is pinned to a release tag for reproducibility — bump the
+# `image:` line and run `docker compose -f docker-compose.prod.yml pull
+# && docker compose -f docker-compose.prod.yml up -d` to upgrade.
+#
+# Resource isolation: every name in this stack is prefixed `t800-prod-`
+# so it can coexist on the same host as the dev compose without
+# colliding on container names, volumes, or networks.
+
+name: t800-prod
+
+services:
+  t800:
+    image: legitservices/t-800:release-2.0.0-01
+    container_name: t800-prod
+    restart: unless-stopped
+    ports:
+      # Bound to the production host's mesh IP only, so the upstream
+      # Caddy at 169.254.0.36 reaches it but no other interface is
+      # exposed.
+      - "169.254.0.123:8080:8080"
+    volumes:
+      - t800-prod-data:/app/data
+    environment:
+      PORT: "8080"
+      # Caddy terminates TLS upstream — the container should serve plain
+      # HTTP on the bind port and trust the X-Forwarded-* headers Caddy
+      # sets.
+      ENABLE_SSL: "false"
+      DATA_DIR: "/app/data"
+      NODE_ENV: "production"
+    depends_on:
+      - guacd
+    networks:
+      - t800-prod-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: t800-prod-guacd
+    restart: unless-stopped
+    networks:
+      - t800-prod-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  t800-prod-data:
+    driver: local
+
+networks:
+  t800-prod-net:
+    driver: bridge
