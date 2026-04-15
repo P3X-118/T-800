@@ -197,7 +197,11 @@ export function Tab({
             !isActive &&
             "bg-background/80 text-muted-foreground border-border hover:bg-background/90",
         )}
-        onClick={!disableActivate ? onActivate : undefined}
+        onClick={
+          !disableActivate
+            ? (e) => onActivate?.(e.ctrlKey || e.metaKey)
+            : undefined
+        }
         style={{
           marginBottom: "-2px",
           borderBottom: isActive ? "2px solid var(--foreground)" : "none",
@@ -431,7 +435,11 @@ export function Tab({
     return (
       <div
         className={cn(tabBaseClasses, "cursor-pointer")}
-        onClick={!disableActivate ? onActivate : undefined}
+        onClick={
+          !disableActivate
+            ? (e) => onActivate?.(e.ctrlKey || e.metaKey)
+            : undefined
+        }
         style={{
           marginBottom: "-2px",
           borderBottom: isActive ? "2px solid var(--foreground)" : "none",
@@ -467,7 +475,11 @@ export function Tab({
     return (
       <div
         className={cn(tabBaseClasses, "cursor-pointer")}
-        onClick={!disableActivate ? onActivate : undefined}
+        onClick={
+          !disableActivate
+            ? (e) => onActivate?.(e.ctrlKey || e.metaKey)
+            : undefined
+        }
         style={{
           marginBottom: "-2px",
           borderBottom: isActive ? "2px solid var(--foreground)" : "none",
@@ -503,7 +515,11 @@ export function Tab({
     return (
       <div
         className={cn(tabBaseClasses, "cursor-pointer")}
-        onClick={!disableActivate ? onActivate : undefined}
+        onClick={
+          !disableActivate
+            ? (e) => onActivate?.(e.ctrlKey || e.metaKey)
+            : undefined
+        }
         style={{
           marginBottom: "-2px",
           borderBottom: isActive ? "2px solid var(--foreground)" : "none",

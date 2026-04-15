@@ -26,6 +26,32 @@ import {
 export type Tab = TabContextTab;
 export type { SplitLayoutNode, DropPosition };
 
+// Home and Host Manager are pinned to the leftmost positions of the tab
+// bar in this order. enforcePinOrder() is applied after every tabs[]
+// mutation so reorder/add/remove can never put a non-pinned tab to the
+// left of a pinned one, and the two pinned tabs always appear in the
+// Home → ssh_manager order regardless of insertion sequence.
+const PIN_ORDER: readonly string[] = ["home", "ssh_manager"];
+const pinRank = (type: string) => {
+  const i = PIN_ORDER.indexOf(type);
+  return i < 0 ? PIN_ORDER.length : i;
+};
+const enforcePinOrder = (arr: Tab[]): Tab[] => {
+  // Stable sort by pin rank — pinned tabs float to their positions, all
+  // other tabs retain their relative order.
+  const withIdx = arr.map((t, i) => ({ t, i }));
+  withIdx.sort((a, b) => {
+    const d = pinRank(a.t.type) - pinRank(b.t.type);
+    return d !== 0 ? d : a.i - b.i;
+  });
+  const sorted = withIdx.map((x) => x.t);
+  // Avoid creating a new array reference if order didn't actually change.
+  for (let k = 0; k < arr.length; k++) {
+    if (sorted[k] !== arr[k]) return sorted;
+  }
+  return arr;
+};
+
 export interface TabDragToSplit {
   draggedTabId: number;
   isOverTerminalArea: boolean;
@@ -146,7 +172,7 @@ export function TabProvider({ children }: TabProviderProps) {
           restored.push(restoredTab);
           if (tab.id > maxId) maxId = tab.id;
         }
-        if (restored.length > 1) return restored;
+        if (restored.length > 1) return enforcePinOrder(restored);
       }
     } catch {
       /* ignore corrupt data */
@@ -352,18 +378,20 @@ export function TabProvider({ children }: TabProviderProps) {
       const existingTab = tabs.find((t) => t.type === "ssh_manager");
       if (existingTab) {
         setTabs((prev) =>
-          prev.map((t) =>
-            t.id === existingTab.id
-              ? {
-                  ...t,
-                  title: existingTab.title,
-                  hostConfig: tabData.hostConfig
-                    ? { ...tabData.hostConfig }
-                    : undefined,
-                  initialTab: tabData.initialTab,
-                  _updateTimestamp: Date.now(),
-                }
-              : t,
+          enforcePinOrder(
+            prev.map((t) =>
+              t.id === existingTab.id
+                ? {
+                    ...t,
+                    title: existingTab.title,
+                    hostConfig: tabData.hostConfig
+                      ? { ...tabData.hostConfig }
+                      : undefined,
+                    initialTab: tabData.initialTab,
+                    _updateTimestamp: Date.now(),
+                  }
+                : t,
+            ),
           ),
         );
         setCurrentTab(existingTab.id);
@@ -401,7 +429,7 @@ export function TabProvider({ children }: TabProviderProps) {
           }
         : undefined,
     };
-    setTabs((prev) => [...prev, newTab]);
+    setTabs((prev) => enforcePinOrder([...prev, newTab]));
     setCurrentTab(id);
     setAllSplitScreenTab((prev) => prev.filter((tid) => tid !== id));
     return id;
@@ -423,7 +451,7 @@ export function TabProvider({ children }: TabProviderProps) {
       const [moved] = next.splice(fromIdx, 1);
       const adjusted = fromIdx < afterIdx ? afterIdx : afterIdx + 1;
       next.splice(adjusted, 0, moved);
-      return next;
+      return enforcePinOrder(next);
     });
     return id;
   };
@@ -504,7 +532,7 @@ export function TabProvider({ children }: TabProviderProps) {
         isReorderingRef.current = false;
       }, 100);
 
-      return newTabs;
+      return enforcePinOrder(newTabs);
     });
   };
 

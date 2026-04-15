@@ -35,6 +35,7 @@ import {
   Maximize2,
   Minimize2,
   Copy,
+  SeparatorVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
@@ -172,6 +173,7 @@ export function AppView({
     swapInSplitLayout,
     addToSplitRoot,
     cancelTabDragToSplit,
+    removeFromSplitLayout,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -212,6 +214,7 @@ export function AppView({
       position: "top" | "right" | "bottom" | "left",
     ) => void;
     cancelTabDragToSplit: () => void;
+    removeFromSplitLayout: (tabId: number) => void;
   };
   const { state: sidebarState } = useSidebar();
   const { theme: appTheme } = useTheme();
@@ -250,6 +253,72 @@ export function AppView({
     sourceTabId: number;
     hoverTabId: number | null;
   } | null>(null);
+
+  // Refs for the native document-level dragstart handler below — it
+  // needs current `tabs` / `allSplitScreenTab` without being
+  // re-installed on every render.
+  const tabsRef = useRef<TabData[]>([]);
+  const allSplitScreenTabRef = useRef<number[]>([]);
+  useEffect(() => {
+    tabsRef.current = tabs;
+    allSplitScreenTabRef.current = allSplitScreenTab;
+  });
+
+  // React 19's synthetic `onDragStart` delegation drops the event for
+  // panel title bars inside ResizablePanel — mousedown and the native
+  // dragstart both reach the element, but React never dispatches the
+  // synthetic handler, so top-row panels' title-bar drags silently
+  // fail. We install a document-level capture listener that reads the
+  // tab id from a `data-panel-titlebar-tab-id` attribute and runs the
+  // work the React handler would have. Dragend is handled the same
+  // way so panelDrag always clears.
+  useEffect(() => {
+    const onDragStart = (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tabIdAttr = target?.getAttribute?.(
+        "data-panel-titlebar-tab-id",
+      );
+      if (!tabIdAttr) return;
+      if (allSplitScreenTabRef.current.length <= 1) return;
+      const tabId = Number(tabIdAttr);
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab) return;
+
+      const dragEl = document.createElement("div");
+      dragEl.textContent = tab.title || String(tabId);
+      dragEl.style.cssText =
+        "position:fixed;top:-1000px;left:-1000px;padding:6px 16px;background:var(--color-surface,#1e1e2e);color:var(--color-foreground,#cdd6f4);border:2px solid #89b4fa;border-radius:6px;font-size:13px;white-space:nowrap;z-index:99999;opacity:0.9;";
+      document.body.appendChild(dragEl);
+      if (e.dataTransfer) {
+        e.dataTransfer.setDragImage(
+          dragEl,
+          dragEl.offsetWidth / 2,
+          dragEl.offsetHeight / 2,
+        );
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(tabId));
+      }
+      setTimeout(() => {
+        if (dragEl.parentNode) dragEl.parentNode.removeChild(dragEl);
+      }, 0);
+      setPanelDrag({ sourceTabId: tabId, hoverTabId: null });
+    };
+    const onDragEnd = (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tabIdAttr = target?.getAttribute?.(
+        "data-panel-titlebar-tab-id",
+      );
+      if (!tabIdAttr) return;
+      setPanelDrag(null);
+      setOuterDropEdge(null);
+    };
+    document.addEventListener("dragstart", onDragStart, true);
+    document.addEventListener("dragend", onDragEnd, true);
+    return () => {
+      document.removeEventListener("dragstart", onDragStart, true);
+      document.removeEventListener("dragend", onDragEnd, true);
+    };
+  }, []);
 
   const [panelContextMenu, setPanelContextMenu] = useState<{
     tabId: number;
@@ -967,7 +1036,10 @@ export function AppView({
               key={t.id}
               style={{
                 ...finalStyle,
-                pointerEvents: panelDrag ? "none" : finalStyle.pointerEvents,
+                pointerEvents:
+                  panelDrag || tabDragToSplit
+                    ? "none"
+                    : finalStyle.pointerEvents,
               }}
             >
               <div
@@ -1141,23 +1213,7 @@ export function AppView({
                   allSplitScreenTab.length > 1 ? "cursor-grab active:cursor-grabbing" : ""
                 }`}
                 draggable={allSplitScreenTab.length > 1}
-                onDragStart={(e) => {
-                  // Create opaque drag image
-                  const dragEl = document.createElement("div");
-                  dragEl.textContent = tab.title;
-                  dragEl.style.cssText =
-                    "position:fixed;top:-1000px;left:-1000px;padding:6px 16px;background:var(--color-surface,#1e1e2e);color:var(--color-foreground,#cdd6f4);border:2px solid #89b4fa;border-radius:6px;font-size:13px;white-space:nowrap;z-index:99999;opacity:0.9;";
-                  document.body.appendChild(dragEl);
-                  e.dataTransfer.setDragImage(dragEl, dragEl.offsetWidth / 2, dragEl.offsetHeight / 2);
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", String(tab.id));
-                  setTimeout(() => document.body.removeChild(dragEl), 0);
-                  setPanelDrag({ sourceTabId: tab.id, hoverTabId: null });
-                }}
-                onDragEnd={() => {
-                  setPanelDrag(null);
-                  setOuterDropEdge(null);
-                }}
+                data-panel-titlebar-tab-id={tab.id}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1336,42 +1392,31 @@ export function AppView({
         transition:
           "margin-left 200ms linear, margin-right 200ms linear, margin-top 200ms linear",
       }}
-      onDragOver={
-        tabDragToSplit
-          ? (e) => {
-              e.preventDefault();
-              setDragOverTerminalArea(true);
-            }
-          : undefined
-      }
-      onDragLeave={
-        tabDragToSplit
-          ? (e) => {
-              if (
-                !containerRef.current?.contains(
-                  e.relatedTarget as Node,
-                )
-              ) {
-                setDragOverTerminalArea(false);
-                setExternalDropTarget(null);
-                setOuterDropEdge(null);
-              }
-            }
-          : undefined
-      }
-      onDrop={
-        tabDragToSplit
-          ? (e) => {
-              e.preventDefault();
-              // If a directional zone handled the drop, externalDropTarget
-              // will already be null. Otherwise fall back to the legacy
-              // append-to-split behavior.
-              executeDragSplit(tabDragToSplit.draggedTabId);
-              setExternalDropTarget(null);
-              setOuterDropEdge(null);
-            }
-          : undefined
-      }
+      onDragOver={(e) => {
+        // Always attached so the listener is never detached between
+        // renders when `tabDragToSplit` flips — React re-rendering the
+        // handler slot to `undefined` and back has caused the drop
+        // quadrants to miss the first dragover events during a
+        // top-navbar drag.
+        if (!tabDragToSplit) return;
+        e.preventDefault();
+        setDragOverTerminalArea(true);
+      }}
+      onDragLeave={(e) => {
+        if (!tabDragToSplit) return;
+        if (!containerRef.current?.contains(e.relatedTarget as Node)) {
+          setDragOverTerminalArea(false);
+          setExternalDropTarget(null);
+          setOuterDropEdge(null);
+        }
+      }}
+      onDrop={(e) => {
+        if (!tabDragToSplit) return;
+        e.preventDefault();
+        executeDragSplit(tabDragToSplit.draggedTabId);
+        setExternalDropTarget(null);
+        setOuterDropEdge(null);
+      }}
     >
       {renderTerminalsLayer()}
       <div className="relative z-[2]" style={{ height: "100%", pointerEvents: "none" }}>
@@ -1482,7 +1527,12 @@ export function AppView({
         if (!parentRect) return null;
 
         return (
-          <div className="absolute inset-0 z-[62] pointer-events-none">
+          // Must stack above the outer drop-zones wrapper at z-[65] so
+          // edge-adjacent panels' directional zones can still receive
+          // drops where they overlap the container-edge outer zones.
+          // Inner baseZIndex values only apply within this wrapper's
+          // stacking context, so the wrapper itself has to win.
+          <div className="absolute inset-0 z-[66] pointer-events-none">
             {allSplitScreenTab
               .filter((tabId) => tabId !== panelDrag.sourceTabId)
               .map((tabId) => {
@@ -1528,7 +1578,12 @@ export function AppView({
                   handleLeave,
                   handleDrop,
                   centerLabel: "Swap",
-                  baseZIndex: 63,
+                  // Must sit above the outer edge zones (z-[65]) so that
+                  // edge-adjacent panels — the top row, bottom row, and
+                  // left/right columns — can still receive panel-level
+                  // snap drops where their own edge zones overlap the
+                  // container-edge outer zones.
+                  baseZIndex: 70,
                 });
               })}
           </div>
@@ -1823,6 +1878,22 @@ export function AppView({
           >
             <Rows2 className="w-3.5 h-3.5" />
             Max Row
+          </button>
+          <div className="border-t border-edge my-1" />
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              // Remove this terminal from the split layout but keep it
+              // as a regular top-level tab; focus it so it becomes the
+              // single-pane view.
+              const detachedId = panelContextMenu.tabId;
+              removeFromSplitLayout(detachedId);
+              setCurrentTab(detachedId);
+              setPanelContextMenu(null);
+            }}
+          >
+            <SeparatorVertical className="w-3.5 h-3.5" />
+            Detach
           </button>
           <div className="border-t border-edge my-1" />
           <button

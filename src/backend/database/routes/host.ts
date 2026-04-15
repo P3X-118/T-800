@@ -3590,6 +3590,34 @@ router.post(
       if (h.name) aliasToHostId.set(h.name as string, h.id as number);
     }
 
+    // Auto-categorization: when two or more imported entries share the
+    // same IPv4 /24 subnet, group them into a `<a>.<b>.<c>.x` folder so
+    // related hosts land together without any user action. Entries with
+    // DNS-name hostnames, IPv6 literals, or singleton subnets fall
+    // through to `defaultFolder`. An explicit `_folder` from the parser
+    // (e.g. Ansible inventory groups) still wins — we never override
+    // user-specified folders.
+    const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+    const subnetCounts = new Map<string, number>();
+    const entrySubnet = new Map<number, string>();
+    for (let i = 0; i < entries.length; i++) {
+      const host = entries[i].hostname;
+      if (!host) continue;
+      const m = host.match(ipv4Pattern);
+      if (!m) continue;
+      const octets = [m[1], m[2], m[3], m[4]].map((s) => Number(s));
+      if (octets.some((o) => Number.isNaN(o) || o < 0 || o > 255)) continue;
+      const key = `${octets[0]}.${octets[1]}.${octets[2]}.x`;
+      subnetCounts.set(key, (subnetCounts.get(key) || 0) + 1);
+      entrySubnet.set(i, key);
+    }
+    const autoFolderByEntryIndex = new Map<number, string>();
+    for (const [idx, subnet] of entrySubnet) {
+      if ((subnetCounts.get(subnet) || 0) >= 2) {
+        autoFolderByEntryIndex.set(idx, subnet);
+      }
+    }
+
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       try {
@@ -3654,7 +3682,10 @@ router.post(
           continue;
         }
 
-        const entryFolder = entry.extras?._folder || defaultFolder;
+        const entryFolder =
+          entry.extras?._folder ||
+          autoFolderByEntryIndex.get(i) ||
+          defaultFolder;
         const entryTags = entry.extras?._tags || defaultTags;
         const sshDataObj: Record<string, unknown> = {
           userId,

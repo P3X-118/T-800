@@ -316,7 +316,11 @@ app.get("/version", authenticateJWT, async (req, res) => {
     );
 
     const rawTag = releaseData.data.tag_name || releaseData.data.name || "";
-    const remoteVersionMatch = rawTag.match(/(\d+\.\d+(\.\d+)?)/);
+    // Match `x.y.z` with an optional numeric build suffix like `-02`.
+    // Our release tags are `release-2.0.0-02` — the old regex stopped at
+    // `2.0.0` and always reported "update available" even when the user
+    // was on the same build.
+    const remoteVersionMatch = rawTag.match(/(\d+\.\d+\.\d+(?:-\d+)?)/);
     const remoteVersion = remoteVersionMatch ? remoteVersionMatch[1] : null;
 
     if (!remoteVersion) {
@@ -327,7 +331,28 @@ app.get("/version", authenticateJWT, async (req, res) => {
       return res.status(401).send("Remote Version Not Found");
     }
 
-    const isUpToDate = localVersion === remoteVersion;
+    // Numeric-tuple comparison of `major.minor.patch[-build]`. Missing
+    // components default to 0 so a bare `2.0.0` compares against
+    // `2.0.0-02` deterministically. Local is "up to date" when it's at
+    // least as new as remote — a user on `2.0.0-02` seeing a remote
+    // `2.0.0-01` must not be told to update.
+    const parseVersion = (v: string): number[] => {
+      const m = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-(\d+))?$/);
+      if (!m) return [];
+      return [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4] ?? 0)];
+    };
+    const compareVersions = (a: string, b: string): number => {
+      const pa = parseVersion(a);
+      const pb = parseVersion(b);
+      const len = Math.max(pa.length, pb.length, 4);
+      for (let i = 0; i < len; i++) {
+        const x = pa[i] ?? 0;
+        const y = pb[i] ?? 0;
+        if (x !== y) return x < y ? -1 : 1;
+      }
+      return 0;
+    };
+    const isUpToDate = compareVersions(localVersion, remoteVersion) >= 0;
 
     const response = {
       status: isUpToDate ? "up_to_date" : "requires_update",

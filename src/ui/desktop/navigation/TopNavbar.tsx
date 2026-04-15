@@ -630,6 +630,13 @@ export function TopNavbar({
     img.src =
       "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
     e.dataTransfer.setDragImage(img, 0, 0);
+    // Required for HTML5 DnD to dispatch `dragover` on external drop
+    // targets (AppView's container). Without setData + effectAllowed,
+    // Chromium treats the drag as "invalid" for cross-subtree drops, so
+    // the split drop quadrants never appear when dragging a navbar tab
+    // down into the terminal area.
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(tabId));
 
     // Use the tab's actual position in `tabs[]` (not the displayTabs.normalTabs
     // index) so that drag-to-split and reordering see the correct tab even
@@ -1053,8 +1060,14 @@ export function TopNavbar({
                   userSelect: "none",
                   WebkitUserSelect: "none",
                   flex: tab.type === "home" ? "0 0 auto" : "1 1 150px",
+                  flexShrink: tab.type === "home" ? 0 : undefined,
                   minWidth: tab.type === "home" ? "auto" : "150px",
                   maxWidth: tab.type === "home" ? "auto" : "450px",
+                  // Home has z-10 when active and a right border; the
+                  // flex gap is being swallowed in some layouts, causing
+                  // the next tab (Host Manager after pin order) to clip
+                  // the Home tab's right edge. Force a visible gap.
+                  marginRight: tab.type === "home" ? 4 : undefined,
                   display: "flex",
                 }}
               >
@@ -1129,8 +1142,10 @@ export function TopNavbar({
                       : undefined
                   }
                   onSplitAll={
-                    tab.type !== "home"
+                    isSplittable
                       ? () => {
+                          // Collect every splittable tab not already in
+                          // the split view and fold them all in at once.
                           const splittable = [
                             "terminal",
                             "server_stats",
@@ -1141,14 +1156,19 @@ export function TopNavbar({
                             "vnc",
                             "telnet",
                           ];
-                          const splitIds = tabs
-                            .filter((t: TabData) =>
-                              splittable.includes(t.type),
+                          const candidateIds = tabs
+                            .filter(
+                              (t: TabData) =>
+                                splittable.includes(t.type) &&
+                                !allSplitScreenTab.includes(t.id),
                             )
-                            .map((t: TabData) => t.id)
-                            .slice(0, 12);
-                          if (splitIds.length >= 2) {
-                            setSplitScreenTabs(splitIds);
+                            .map((t: TabData) => t.id);
+                          const merged = [
+                            ...allSplitScreenTab,
+                            ...candidateIds,
+                          ].slice(0, 12);
+                          if (merged.length >= 2) {
+                            setSplitScreenTabs(merged);
                           }
                         }
                       : undefined
@@ -1157,9 +1177,17 @@ export function TopNavbar({
               </div>,
             );
 
-            // Inject the condensed split-view pill immediately AFTER the home tab
+            // Inject the condensed split-view pill after the Host Manager
+            // tab if it's open, otherwise after Home. The pinned tabs must
+            // always stay leftmost — the split pill must never push Host
+            // Manager to the right of it.
+            const pillAnchorType = displayTabs.normalTabs.some(
+              (t: TabData) => t.type === "ssh_manager",
+            )
+              ? "ssh_manager"
+              : "home";
             if (
-              tab.type === "home" &&
+              tab.type === pillAnchorType &&
               displayTabs.condensedSplit.length >= 2
             ) {
               const pillIsActive =
