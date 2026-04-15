@@ -1,17 +1,66 @@
+# T-800 dev stack — t1000.d.sgc.ai
+#
+# Dev-testing environment that operates like production: runs the same
+# image as docker-compose.prod.yml against a separate database so the
+# prod deployment on t800.sgc.ai is insulated from anything tested
+# here.
+#
+# Fronted by the external Caddy at 169.254.0.36 which routes
+# t1000.d.sgc.ai → <host>:8181 over the private mesh network. Caddy
+# terminates TLS; we serve plain HTTP on the bind port and trust
+# X-Forwarded-* headers.
+#
+# Resource isolation: every name is prefixed `t1000-dev-` so it runs
+# alongside the `t800-prod` stack (docker-compose.prod.yml) on the
+# same host without colliding. Independent container names, data
+# volume, guacd sidecar, and bridge network.
+
+name: t1000-dev
+
 services:
-  nginx:
-    image: nginx:alpine
-    network_mode: host
-    volumes:
-      - ../dist:/app/html:ro
-      - ./nginx.conf:/etc/nginx/templates/default.conf.template:ro
-    environment:
-      - PORT=5175
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        mkdir -p /app/nginx/logs /app/nginx/cache /app/nginx/client_body /app/nginx/proxy_temp /app/nginx/fastcgi_temp /app/nginx/uwsgi_temp /app/nginx/scgi_temp
-        envsubst '$$PORT' < /etc/nginx/templates/default.conf.template > /app/nginx/nginx.conf
-        nginx -c /app/nginx/nginx.conf -g 'daemon off;'
+  t1000:
+    image: legitservices/t-800:release-2.0.0-02
+    container_name: t1000-dev
     restart: unless-stopped
+    ports:
+      # Upstream Caddy at 169.254.0.36 routes t1000.d.sgc.ai to
+      # 169.254.0.123:5175 (per /etc/caddy/Caddyfile on the Caddy
+      # host). Bind only on the mesh IP to keep the port scoped to
+      # the private network. The prod stack uses :8181.
+      - "169.254.0.123:5175:8080"
+    volumes:
+      - t1000-dev-data:/app/data
+    environment:
+      PORT: "8080"
+      ENABLE_SSL: "false"
+      DATA_DIR: "/app/data"
+      NODE_ENV: "production"
+    depends_on:
+      - guacd
+    networks:
+      - t1000-dev-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: t1000-dev-guacd
+    restart: unless-stopped
+    networks:
+      - t1000-dev-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  t1000-dev-data:
+    driver: local
+
+networks:
+  t1000-dev-net:
+    driver: bridge

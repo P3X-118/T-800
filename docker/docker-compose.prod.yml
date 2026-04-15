@@ -10,8 +10,10 @@
 # && docker compose -f docker-compose.prod.yml up -d` to upgrade.
 #
 # Resource isolation: every name in this stack is prefixed `t800-prod-`
-# so it can coexist on the same host as the dev compose without
-# colliding on container names, volumes, or networks.
+# so it runs alongside the `t1000-dev` stack (docker-compose.dev.yml)
+# on the same host without colliding on container names, volumes, or
+# networks. t800-prod and t1000-dev each have their own database —
+# changes in dev can't affect production and vice versa.
 
 name: t800-prod
 
@@ -21,17 +23,12 @@ services:
     container_name: t800-prod
     restart: unless-stopped
     ports:
-      # This host serves BOTH t800.sgc.ai (production) and
-      # t1000.d.sgc.ai (dev-operating-like-prod) from a single
-      # container — they run the same image and share the same DB.
-      # The upstream Caddy at 169.254.0.36 routes:
-      #   t800.sgc.ai   → 169.254.0.123:8180
-      #   t1000.d.sgc.ai → <host>:8181
-      # So we expose both host ports to the same container:8080.
-      # :8080 on this host is claimed by another service (wasm-nix),
-      # which is why we avoid publishing on :8080 directly.
-      - "169.254.0.123:8180:8080"
-      - "0.0.0.0:8181:8080"
+      # Upstream Caddy at 169.254.0.36 routes t800.sgc.ai to
+      # 169.254.0.123:8181 (per /etc/caddy/Caddyfile on the Caddy
+      # host). Bind only on the mesh IP so the port is only exposed
+      # over the private network. The dev stack (t1000-dev) uses
+      # :5175 — do NOT claim that port here.
+      - "169.254.0.123:8181:8080"
     volumes:
       - t800-prod-data:/app/data
     environment:
