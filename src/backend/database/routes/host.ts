@@ -41,6 +41,9 @@ import { DatabaseSaveTrigger } from "../db/index.js";
 import { parseSSHKey } from "../../utils/ssh-key-utils.js";
 import { parseSSHConfig } from "../../utils/ssh-config-parser.js";
 import { parseAnsibleInventory } from "../../utils/ansible-inventory-parser.js";
+import { Client as SSHClient } from "ssh2";
+import { SSHHostKeyVerifier } from "../../ssh/host-key-verifier.js";
+import { SSHAuthManager } from "../../ssh/auth-manager.js";
 
 const router = express.Router();
 
@@ -3472,6 +3475,15 @@ router.post(
     const credentialErrors: string[] = [];
     const unreadablePairs = new Set<string>();
 
+    sshLogger.info("Credential resolution starting", {
+      operation: "ssh_config_import_creds",
+      entryCount: entries.length,
+      uploadedKeyPaths: Object.keys(uploadedKeys),
+      entriesWithIdentityFile: entries
+        .filter((e) => e.identityFile)
+        .map((e) => ({ name: e.name, identityFile: e.identityFile, user: e.user })),
+    });
+
     for (const entry of entries) {
       if (!entry.identityFile) continue;
       const user = entry.user || "default";
@@ -3500,6 +3512,16 @@ router.post(
           continue;
         }
       }
+
+      sshLogger.info("Credential key resolution attempt", {
+        operation: "ssh_config_import_creds",
+        host: entry.name,
+        identityFile: entry.identityFile,
+        user,
+        keyFound: !!keyContents,
+        keyLength: keyContents?.length ?? 0,
+        hasPemHeader: keyContents?.includes("-----BEGIN") ?? false,
+      });
 
       if (!keyContents || !keyContents.includes("-----BEGIN")) {
         unreadablePairs.add(key);
@@ -5422,6 +5444,210 @@ router.post(
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  },
+);
+
+/**
+ * @openapi
+ * /ssh/verify-hosts:
+ *   post:
+ *     summary: Batch verify SSH host keys
+ *     description: >
+ *       Attempts an SSH connection to each host, auto-accepts the host
+ *       key, and reports success/failure per host. Useful after bulk
+ *       import to quickly identify which hosts are reachable.
+ *     tags:
+ *       - SSH
+ */
+router.post(
+  "/verify-hosts",
+  authenticateJWT,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!isNonEmptyString(userId)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const hostIds: number[] = req.body?.hostIds;
+    if (!Array.isArray(hostIds) || hostIds.length === 0) {
+      return res.status(400).json({ error: "hostIds array required" });
+    }
+    // Cap to prevent abuse.
+    const MAX_BATCH = 50;
+    const ids = hostIds.slice(0, MAX_BATCH);
+
+    const PER_HOST_TIMEOUT = 15_000;
+
+    const userHosts = await SimpleDBOps.select(
+      db
+        .select()
+        .from(hosts)
+        .where(and(eq(hosts.userId, userId), inArray(hosts.id, ids))),
+      "ssh_data",
+      userId,
+    );
+
+    const hostMap = new Map(
+      userHosts.map((h) => [h.id as number, h]),
+    );
+
+    const results: Array<{
+      hostId: number;
+      name: string;
+      ip: string;
+      port: number;
+      status: "success" | "auth_failed" | "unreachable" | "timeout" | "error";
+      message?: string;
+      fingerprint?: string;
+      keyType?: string;
+      elapsedMs: number;
+    }> = [];
+
+    for (const id of ids) {
+      const host = hostMap.get(id);
+      if (!host) {
+        results.push({
+          hostId: id,
+          name: "",
+          ip: "",
+          port: 0,
+          status: "error",
+          message: "Host not found",
+          elapsedMs: 0,
+        });
+        continue;
+      }
+
+      const start = Date.now();
+      try {
+        const authMgr = new SSHAuthManager({
+          userId,
+          hostId: id,
+          isKeyboardInteractive: false,
+          keyboardInteractiveResponded: false,
+          keyboardInteractiveFinish: null,
+          totpPromptSent: false,
+          warpgateAuthPromptSent: false,
+          totpTimeout: null,
+          warpgateAuthTimeout: null,
+          totpAttempts: 0,
+          ws: null as never,
+        });
+        const creds = await authMgr.resolveCredentials({
+          id,
+          ip: host.ip as string,
+          port: host.port as number,
+          username: host.username as string,
+          authType: (host.authType as string) || "none",
+          credentialId: (host.credentialId as number) || undefined,
+          password: host.password as string | undefined,
+          key: host.key as string | undefined,
+          keyPassword: host.keyPassword as string | undefined,
+        });
+
+        const hostVerifier = await SSHHostKeyVerifier.createHostVerifier(
+          id,
+          host.ip as string,
+          host.port as number,
+          null, // no WebSocket — auto-accept
+          userId,
+          false,
+        );
+
+        const connectConfig: Record<string, unknown> = {
+          host: host.ip as string,
+          port: host.port as number,
+          username: creds.username,
+          hostVerifier,
+          readyTimeout: PER_HOST_TIMEOUT,
+          timeout: PER_HOST_TIMEOUT,
+        };
+
+        if (creds.authType === "key" && creds.key) {
+          connectConfig.privateKey = creds.key;
+          if (creds.keyPassword) connectConfig.passphrase = creds.keyPassword;
+        } else if (creds.authType === "password" && creds.password) {
+          connectConfig.password = creds.password;
+        } else if (creds.authType === "credential") {
+          if (creds.key) {
+            connectConfig.privateKey = creds.key;
+            if (creds.keyPassword)
+              connectConfig.passphrase = creds.keyPassword;
+          } else if (creds.password) {
+            connectConfig.password = creds.password;
+          }
+        }
+
+        const result = await new Promise<{
+          status: "success" | "auth_failed" | "unreachable" | "timeout";
+          message?: string;
+          fingerprint?: string;
+          keyType?: string;
+        }>((resolve) => {
+          const client = new SSHClient();
+          const timer = setTimeout(() => {
+            client.destroy();
+            resolve({ status: "timeout", message: "Connection timed out" });
+          }, PER_HOST_TIMEOUT);
+
+          client.on("ready", () => {
+            clearTimeout(timer);
+            client.end();
+            resolve({ status: "success" });
+          });
+          client.on("error", (err: Error) => {
+            clearTimeout(timer);
+            client.destroy();
+            const msg = err.message || String(err);
+            if (
+              msg.includes("authentication") ||
+              msg.includes("Auth") ||
+              msg.includes("handshake")
+            ) {
+              resolve({ status: "auth_failed", message: msg });
+            } else {
+              resolve({ status: "unreachable", message: msg });
+            }
+          });
+          client.connect(connectConfig as Parameters<SSHClient["connect"]>[0]);
+        });
+
+        results.push({
+          hostId: id,
+          name: (host.name as string) || "",
+          ip: host.ip as string,
+          port: host.port as number,
+          ...result,
+          elapsedMs: Date.now() - start,
+        });
+      } catch (err) {
+        results.push({
+          hostId: id,
+          name: (host.name as string) || "",
+          ip: host.ip as string,
+          port: host.port as number,
+          status: "error",
+          message: err instanceof Error ? err.message : String(err),
+          elapsedMs: Date.now() - start,
+        });
+      }
+    }
+
+    const summary = {
+      total: results.length,
+      success: results.filter((r) => r.status === "success").length,
+      authFailed: results.filter((r) => r.status === "auth_failed").length,
+      unreachable: results.filter((r) => r.status === "unreachable").length,
+      timeout: results.filter((r) => r.status === "timeout").length,
+      error: results.filter((r) => r.status === "error").length,
+    };
+
+    sshLogger.info("Batch host verification complete", {
+      operation: "batch_verify",
+      ...summary,
+    });
+
+    res.json({ results, summary });
   },
 );
 

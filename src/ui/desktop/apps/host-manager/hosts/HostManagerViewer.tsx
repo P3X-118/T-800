@@ -45,7 +45,9 @@ import {
   getGuacamoleTokenFromHost,
   getGuacamoleToken,
   logActivity,
+  batchVerifyHosts,
 } from "@/ui/main-axios.ts";
+import type { HostVerifyResult } from "@/ui/main-axios.ts";
 import { useServerStatus } from "@/ui/contexts/ServerStatusContext";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -102,6 +104,14 @@ import { FolderEditDialog } from "@/ui/desktop/apps/host-manager/dialogs/FolderE
 import { SSHConfigMissingKeysDialog } from "@/ui/desktop/apps/host-manager/dialogs/SSHConfigImportDialog.tsx";
 import { SSHConfigUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/SSHConfigUploadDialog.tsx";
 import { AnsibleInventoryUploadDialog } from "@/ui/desktop/apps/host-manager/dialogs/AnsibleInventoryUploadDialog.tsx";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import type { PendingKeyHost } from "@/ui/main-axios.ts";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 
@@ -147,6 +157,10 @@ export function HostManagerViewer({
     new Set(),
   );
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResults, setVerifyResults] = useState<HostVerifyResult[] | null>(
+    null,
+  );
   const { getStatus } = useServerStatus();
   const dragCounter = useRef(0);
 
@@ -1140,6 +1154,34 @@ export function HostManagerViewer({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={verifying || sshHosts.length === 0}
+                onClick={async () => {
+                  setVerifying(true);
+                  try {
+                    const ids = sshHosts.map((h) => h.id);
+                    const resp = await batchVerifyHosts(ids);
+                    setVerifyResults(resp.results);
+                    const s = resp.summary;
+                    toast.success(
+                      `Verified ${s.total}: ${s.success} ok, ${s.authFailed} auth failed, ${s.unreachable + s.timeout} unreachable`,
+                    );
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error
+                        ? err.message
+                        : "Verification failed",
+                    );
+                  } finally {
+                    setVerifying(false);
+                  }
+                }}
+              >
+                {verifying ? "Verifying..." : "Verify Hosts"}
+              </Button>
 
               <Button
                 variant="outline"
@@ -2338,6 +2380,66 @@ export function HostManagerViewer({
             window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
           }}
         />
+
+        {verifyResults && (
+          <Dialog
+            open={!!verifyResults}
+            onOpenChange={(v) => {
+              if (!v) setVerifyResults(null);
+            }}
+          >
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Host Verification Results</DialogTitle>
+                <DialogDescription>
+                  {verifyResults.filter((r) => r.status === "success").length} of{" "}
+                  {verifyResults.length} hosts reachable
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto thin-scrollbar">
+                {verifyResults.map((r) => (
+                  <div
+                    key={r.hostId}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-[13px] ${
+                      r.status === "success"
+                        ? "border-emerald-500/40 bg-emerald-500/5"
+                        : r.status === "auth_failed"
+                          ? "border-yellow-500/40 bg-yellow-500/5"
+                          : "border-red-500/40 bg-red-500/5"
+                    }`}
+                  >
+                    <StatusIndicator
+                      status={
+                        r.status === "success"
+                          ? "positive"
+                          : r.status === "auth_failed"
+                            ? "warning"
+                            : "negative"
+                      }
+                    />
+                    <span className="font-medium flex-shrink-0">
+                      {r.name || r.ip}
+                    </span>
+                    <span className="text-muted-foreground truncate flex-1">
+                      {r.ip}:{r.port}
+                    </span>
+                    <span className="text-muted-foreground flex-shrink-0">
+                      {r.elapsedMs}ms
+                    </span>
+                    {r.status !== "success" && r.message && (
+                      <span className="text-red-400 truncate max-w-[200px]">
+                        {r.message}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setVerifyResults(null)}>Close</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {selectionMode && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-popover border border-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-2 max-w-[90vw]">

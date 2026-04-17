@@ -1362,6 +1362,41 @@ export async function deleteSSHHost(
   }
 }
 
+export interface HostVerifyResult {
+  hostId: number;
+  name: string;
+  ip: string;
+  port: number;
+  status: "success" | "auth_failed" | "unreachable" | "timeout" | "error";
+  message?: string;
+  fingerprint?: string;
+  keyType?: string;
+  elapsedMs: number;
+}
+
+export interface BatchVerifyResponse {
+  results: HostVerifyResult[];
+  summary: {
+    total: number;
+    success: number;
+    authFailed: number;
+    unreachable: number;
+    timeout: number;
+    error: number;
+  };
+}
+
+export async function batchVerifyHosts(
+  hostIds: number[],
+): Promise<BatchVerifyResponse> {
+  try {
+    const response = await sshHostApi.post("/verify-hosts", { hostIds });
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "batch verify hosts");
+  }
+}
+
 export async function getSSHHostById(hostId: number): Promise<SSHHost> {
   try {
     const response = await sshHostApi.get(`/db/host/${hostId}`);

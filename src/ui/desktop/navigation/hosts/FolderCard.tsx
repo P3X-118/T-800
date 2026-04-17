@@ -13,6 +13,8 @@ import {
   HardDrive,
   Globe,
   Pencil,
+  Trash2,
+  Columns2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -60,6 +62,13 @@ interface FolderCardProps {
   folderIcon?: string;
   onFolderRenamed?: () => void;
   disableRename?: boolean;
+  forceExpandedKey?: number;
+  isSelected?: boolean;
+  onSelect?: (mode: "ctrl" | "shift") => void;
+  onDeleteFolder?: () => void;
+  selectedCount?: number;
+  onDeleteSelected?: () => void;
+  onOpenInSplitView?: () => void;
 }
 
 export function FolderCard({
@@ -69,8 +78,20 @@ export function FolderCard({
   folderIcon,
   onFolderRenamed,
   disableRename = false,
+  forceExpandedKey,
+  isSelected = false,
+  onSelect,
+  onDeleteFolder,
+  selectedCount = 0,
+  onDeleteSelected,
+  onOpenInSplitView,
 }: FolderCardProps): React.ReactElement {
   const [isExpanded, setIsExpanded] = useState(true);
+
+  useEffect(() => {
+    if (forceExpandedKey === undefined) return;
+    setIsExpanded(forceExpandedKey > 0);
+  }, [forceExpandedKey]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -158,18 +179,24 @@ export function FolderCard({
     folderIcon && iconMap[folderIcon] ? iconMap[folderIcon] : Folder;
 
   return (
-    <div className="bg-elevated border-2 border-edge rounded-lg overflow-hidden p-0 m-0">
+    <div
+      className={`bg-elevated border-2 rounded-lg overflow-hidden p-0 m-0 transition-colors ${
+        isSelected ? "border-blue-500" : "border-edge"
+      }`}
+    >
       <div
         className={`px-4 py-3 relative ${isExpanded ? "border-b-2" : ""} bg-header`}
-        onContextMenu={
-          disableRename
-            ? undefined
-            : (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setContextMenu({ x: e.clientX, y: e.clientY });
-              }
-        }
+        onClick={(e) => {
+          if ((e.ctrlKey || e.metaKey || e.shiftKey) && onSelect) {
+            e.stopPropagation();
+            onSelect(e.ctrlKey || e.metaKey ? "ctrl" : "shift");
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
       >
         <div className="flex gap-2 pr-10">
           <div className="flex-shrink-0 flex items-center">
@@ -212,17 +239,55 @@ export function FolderCard({
 
       {contextMenu && (
         <div
-          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-            onClick={handleStartRename}
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </button>
+          {!disableRename && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={handleStartRename}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Rename
+            </button>
+          )}
+          {onOpenInSplitView && hosts.length > 0 && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                setContextMenu(null);
+                onOpenInSplitView();
+              }}
+            >
+              <Columns2 className="w-3.5 h-3.5" />
+              Open in Split View ({hosts.length})
+            </button>
+          )}
+          {selectedCount > 1 && onDeleteSelected && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+              onClick={() => {
+                setContextMenu(null);
+                onDeleteSelected();
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete {selectedCount} folders
+            </button>
+          )}
+          {onDeleteFolder && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+              onClick={() => {
+                setContextMenu(null);
+                onDeleteFolder();
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete folder ({hosts.length} hosts)
+            </button>
+          )}
         </div>
       )}
       {isExpanded && (

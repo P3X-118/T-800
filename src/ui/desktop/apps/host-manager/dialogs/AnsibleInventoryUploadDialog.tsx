@@ -115,6 +115,8 @@ export function AnsibleInventoryUploadDialog({
   const [keyContents, setKeyContents] = useState<Record<string, string>>({});
   const [keyFileNames, setKeyFileNames] = useState<Record<string, string>>({});
   const [overwrite, setOverwrite] = useState(false);
+  const [configDragOver, setConfigDragOver] = useState(false);
+  const [keyDragOver, setKeyDragOver] = useState<string | null>(null);
   const inventoryInputRef = useRef<HTMLInputElement | null>(null);
   const importInFlightRef = useRef(false);
 
@@ -128,12 +130,7 @@ export function AnsibleInventoryUploadDialog({
     setOverwrite(false);
   };
 
-  const handleConfigFile = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const loadConfigFromFile = async (file: File) => {
     try {
       const text = await file.text();
       setInventoryText(text);
@@ -141,13 +138,34 @@ export function AnsibleInventoryUploadDialog({
       const ids = extractKeyFiles(text);
       setIdentityFiles(ids);
       if (ids.length > 0) setStep("keys");
-      const hostCount = countHosts(text);
+      const hc = countHosts(text);
       toast.success(
-        `Loaded ${file.name}: ${hostCount} host entries, ${ids.length} unique key files referenced`,
+        `Loaded ${file.name}: ${hc} host entries, ${ids.length} unique key files referenced`,
       );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to read inventory file",
+      );
+    }
+  };
+
+  const handleConfigFile = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await loadConfigFromFile(file);
+  };
+
+  const loadKeyFromFile = async (identityFile: string, file: File) => {
+    try {
+      const text = await file.text();
+      setKeyContents((prev) => ({ ...prev, [identityFile]: text }));
+      setKeyFileNames((prev) => ({ ...prev, [identityFile]: file.name }));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to read key file",
       );
     }
   };
@@ -159,15 +177,7 @@ export function AnsibleInventoryUploadDialog({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    try {
-      const text = await file.text();
-      setKeyContents((prev) => ({ ...prev, [identityFile]: text }));
-      setKeyFileNames((prev) => ({ ...prev, [identityFile]: file.name }));
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to read key file",
-      );
-    }
+    await loadKeyFromFile(identityFile, file);
   };
 
   const handleImport = async () => {
@@ -251,8 +261,36 @@ export function AnsibleInventoryUploadDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Step 1: Upload inventory file */}
-        <div className="flex flex-col gap-3 py-2">
+        {/* Step 1: Upload inventory file (click or drag-and-drop) */}
+        <div
+          className={`flex flex-col gap-3 py-2 px-3 rounded-lg border-2 border-dashed transition-colors ${
+            configDragOver
+              ? "border-blue-500 bg-blue-500/10"
+              : "border-transparent"
+          }`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfigDragOver(true);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfigDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfigDragOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setConfigDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) loadConfigFromFile(file);
+          }}
+        >
           <div className="flex items-center gap-3">
             <label className="flex-1">
               <input
@@ -271,7 +309,7 @@ export function AnsibleInventoryUploadDialog({
                   <FileText className="h-4 w-4" />
                   {inventoryFileName
                     ? `Loaded: ${inventoryFileName}`
-                    : "Choose Ansible inventory file"}
+                    : "Drop or choose Ansible inventory file"}
                 </span>
               </Button>
             </label>
@@ -300,14 +338,39 @@ export function AnsibleInventoryUploadDialog({
             <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto thin-scrollbar">
               {identityFiles.map((idFile) => {
                 const hasKey = !!keyContents[idFile];
+                const isDragTarget = keyDragOver === idFile;
                 return (
                   <div
                     key={idFile}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md border ${
-                      hasKey
-                        ? "border-emerald-500/40 bg-emerald-500/5"
-                        : "border-edge bg-surface"
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-colors ${
+                      isDragTarget
+                        ? "border-blue-500 bg-blue-500/10"
+                        : hasKey
+                          ? "border-emerald-500/40 bg-emerald-500/5"
+                          : "border-edge bg-surface"
                     }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setKeyDragOver(idFile);
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setKeyDragOver(idFile);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (keyDragOver === idFile) setKeyDragOver(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setKeyDragOver(null);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) loadKeyFromFile(idFile, file);
+                    }}
                   >
                     {hasKey ? (
                       <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />

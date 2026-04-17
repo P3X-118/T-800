@@ -11,6 +11,8 @@ import {
   Pencil,
   Trash2,
   Plus,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isElectron, logoutUser } from "@/ui/main-axios.ts";
@@ -48,7 +50,11 @@ import {
 import { Input } from "@/components/ui/input.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { FolderCard } from "@/ui/desktop/navigation/hosts/FolderCard.tsx";
-import { getSSHHosts, getSSHFolders } from "@/ui/main-axios.ts";
+import {
+  getSSHHosts,
+  getSSHFolders,
+  deleteSSHHost,
+} from "@/ui/main-axios.ts";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 import type { SSHFolder, SSHHost } from "@/types/index.ts";
 
@@ -137,6 +143,7 @@ export function LeftSidebar({
     updateHostConfig,
     splitLayout,
     setSplitLayout,
+    setSplitScreenTabs,
   } = useTabs() as {
     tabs: Array<{
       id: number;
@@ -151,6 +158,7 @@ export function LeftSidebar({
     updateHostConfig: (id: number, config: unknown) => void;
     splitLayout: SplitLayoutNode | null;
     setSplitLayout: (layout: SplitLayoutNode | null) => void;
+    setSplitScreenTabs: (tabIds: number[]) => void;
   };
   const sshManagerTab = tabList.find((t) => t.type === "ssh_manager");
   const openSshManagerTab = () => {
@@ -182,6 +190,17 @@ export function LeftSidebar({
 
   const [hosts, setHosts] = useState<SSHHost[]>([]);
   const [hostsLoading] = useState(false);
+  const [selectedFolders, setSelectedFolders] = useState<Set<string>>(
+    new Set(),
+  );
+  // Positive = expand all, negative = collapse all. Magnitude changes on
+  // each toggle so FolderCard's useEffect fires even if direction repeats.
+  const [folderExpandKey, setFolderExpandKey] = useState(0);
+  const foldersExpanded = folderExpandKey > 0;
+  const toggleAllFolders = () =>
+    setFolderExpandKey((prev) =>
+      prev > 0 ? -(Math.abs(prev) + 1) : Math.abs(prev) + 1,
+    );
   const [hostsError, setHostsError] = useState<string | null>(null);
   const prevHostsRef = React.useRef<SSHHost[]>([]);
   const [search, setSearch] = useState("");
@@ -607,6 +626,92 @@ export function LeftSidebar({
     return folders;
   }, [hostsByFolder]);
 
+  const lastSelectedFolderRef = React.useRef<string | null>(null);
+
+  const handleFolderSelect = React.useCallback(
+    (folderName: string, mode: "ctrl" | "shift") => {
+      if (mode === "shift" && lastSelectedFolderRef.current) {
+        const anchor = sortedFolders.indexOf(lastSelectedFolderRef.current);
+        const target = sortedFolders.indexOf(folderName);
+        if (anchor >= 0 && target >= 0) {
+          const lo = Math.min(anchor, target);
+          const hi = Math.max(anchor, target);
+          setSelectedFolders((prev) => {
+            const next = new Set(prev);
+            for (let i = lo; i <= hi; i++) next.add(sortedFolders[i]);
+            return next;
+          });
+          return;
+        }
+      }
+      setSelectedFolders((prev) => {
+        const next = new Set(prev);
+        if (next.has(folderName)) next.delete(folderName);
+        else next.add(folderName);
+        return next;
+      });
+      lastSelectedFolderRef.current = folderName;
+    },
+    [sortedFolders],
+  );
+
+  const deleteFolders = React.useCallback(
+    async (folderNames: string[]) => {
+      const hostIds = folderNames.flatMap(
+        (f) => hostsByFolder[f]?.map((h) => h.id) ?? [],
+      );
+      if (hostIds.length === 0) return;
+      const label =
+        folderNames.length === 1
+          ? `"${folderNames[0]}" (${hostIds.length} hosts)`
+          : `${folderNames.length} folders (${hostIds.length} hosts)`;
+      if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+      let deleted = 0;
+      for (const id of hostIds) {
+        try {
+          await deleteSSHHost(id);
+          deleted++;
+        } catch {
+          /* continue */
+        }
+      }
+      toast.success(`Deleted ${deleted} hosts`);
+      setSelectedFolders(new Set());
+      window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+      window.dispatchEvent(new CustomEvent("folders:changed"));
+    },
+    [hostsByFolder],
+  );
+
+  const openFolderInSplitView = React.useCallback(
+    (folderName: string) => {
+      const folderHosts = hostsByFolder[folderName];
+      if (!folderHosts || folderHosts.length === 0) return;
+      const tabIds: number[] = [];
+      for (const host of folderHosts.slice(0, 12)) {
+        const id = addTab({
+          type: "terminal",
+          title: host.name || host.ip,
+          hostConfig: {
+            id: host.id,
+            name: host.name,
+            ip: host.ip,
+            port: host.port,
+            username: host.username,
+          },
+        });
+        tabIds.push(id);
+      }
+      if (tabIds.length >= 2) {
+        setSplitScreenTabs(tabIds);
+        setCurrentTab(tabIds[0]);
+      } else if (tabIds.length === 1) {
+        setCurrentTab(tabIds[0]);
+      }
+    },
+    [hostsByFolder, addTab, setSplitScreenTabs, setCurrentTab],
+  );
+
   const getSortedHosts = React.useCallback((arr: SSHHost[]) => {
     const pinned = arr
       .filter((h) => h.pin)
@@ -847,14 +952,34 @@ export function LeftSidebar({
               </SidebarGroup>
               <Separator className="p-0.25" />
               <SidebarGroup className="flex flex-col gap-y-2 !-mt-2">
-                <div className="!bg-field rounded-lg">
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t("placeholders.searchHostsAny")}
-                    className="w-full h-8 text-sm border-2 !bg-field border-edge rounded-md"
-                    autoComplete="off"
-                  />
+                <div className="flex gap-2">
+                  <div className="!bg-field rounded-lg flex-1">
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder={t("placeholders.searchHostsAny")}
+                      className="w-full h-8 text-sm border-2 !bg-field border-edge rounded-md"
+                      autoComplete="off"
+                    />
+                  </div>
+                  {sortedFolders.length > 1 && (
+                    <Button
+                      variant="outline"
+                      className="h-8 w-8 flex-shrink-0 border-2 !border-edge !px-0"
+                      title={
+                        foldersExpanded
+                          ? "Collapse all folders"
+                          : "Expand all folders"
+                      }
+                      onClick={toggleAllFolders}
+                    >
+                      {foldersExpanded ? (
+                        <ChevronsDownUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronsUpDown className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  )}
                 </div>
 
                 {hostsError && (
@@ -885,6 +1010,22 @@ export function LeftSidebar({
                       folderColor={metadata?.color}
                       folderIcon={metadata?.icon}
                       disableRename={folder === t("leftSidebar.noFolder")}
+                      forceExpandedKey={folderExpandKey}
+                      isSelected={selectedFolders.has(folder)}
+                      onSelect={(mode) =>
+                        handleFolderSelect(folder, mode)
+                      }
+                      onDeleteFolder={() => deleteFolders([folder])}
+                      selectedCount={selectedFolders.size}
+                      onDeleteSelected={
+                        selectedFolders.size > 1
+                          ? () =>
+                              deleteFolders(Array.from(selectedFolders))
+                          : undefined
+                      }
+                      onOpenInSplitView={() =>
+                        openFolderInSplitView(folder)
+                      }
                     />
                   );
                 })}
