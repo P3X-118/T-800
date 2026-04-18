@@ -1158,11 +1158,11 @@ export function HostManagerViewer({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={verifying || sshHosts.length === 0}
+                disabled={verifying || hosts.length === 0}
                 onClick={async () => {
                   setVerifying(true);
                   try {
-                    const ids = sshHosts.map((h) => h.id);
+                    const ids = hosts.map((h) => h.id);
                     const resp = await batchVerifyHosts(ids);
                     setVerifyResults(resp.results);
                     const s = resp.summary;
