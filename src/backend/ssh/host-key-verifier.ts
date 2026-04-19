@@ -89,13 +89,19 @@ export class SSHHostKeyVerifier {
             }
 
             if (!ws) {
-              sshLogger.warn(
-                "No WebSocket available for host key verification prompt",
+              // No WebSocket means this is a batch verify or headless
+              // connection — auto-accept the key and store it so the
+              // user won't be prompted on the next interactive connect.
+              await this.storeHostKey(hostId, fingerprint, keyType, algorithm);
+              sshLogger.info(
+                "Host key auto-accepted and stored (no WebSocket)",
                 {
-                  operation: "host_key_no_ws",
+                  operation: "host_key_auto_stored",
                   hostId,
                   ip,
                   port,
+                  fingerprint,
+                  keyType,
                   userId,
                 },
               );

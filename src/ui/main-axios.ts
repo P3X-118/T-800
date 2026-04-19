@@ -1227,6 +1227,7 @@ export interface SSHConfigImportResult {
   success: number;
   updated: number;
   skipped: number;
+  skippedMissingKeys: number;
   failed: number;
   errors: string[];
   proxyJumpResolved: number;
@@ -1234,6 +1235,7 @@ export interface SSHConfigImportResult {
   credentialsCreated: number;
   credentialErrors: string[];
   configPath: string;
+  importedHostIds: number[];
   pendingKeyHosts: PendingKeyHost[];
 }
 
@@ -1267,6 +1269,7 @@ export async function importSSHConfigFromUpload(
   configText: string,
   overwrite = false,
   keys: Record<string, string> = {},
+  skipHostsWithoutKeys = false,
 ): Promise<SSHConfigImportResult> {
   try {
     const response = await sshHostApi.post("/import-ssh-config", {
@@ -1274,6 +1277,7 @@ export async function importSSHConfigFromUpload(
       overwrite,
       keys,
       sourceType: "ssh",
+      skipHostsWithoutKeys,
     });
     return response.data;
   } catch (error) {
@@ -1291,6 +1295,7 @@ export async function importAnsibleInventoryFromUpload(
   configText: string,
   overwrite = false,
   keys: Record<string, string> = {},
+  skipHostsWithoutKeys = false,
 ): Promise<SSHConfigImportResult> {
   try {
     const response = await sshHostApi.post("/import-ssh-config", {
@@ -1298,6 +1303,7 @@ export async function importAnsibleInventoryFromUpload(
       overwrite,
       keys,
       sourceType: "ansible",
+      skipHostsWithoutKeys,
     });
     return response.data;
   } catch (error) {

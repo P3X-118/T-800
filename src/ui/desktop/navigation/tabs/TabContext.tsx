@@ -330,6 +330,42 @@ export function TabProvider({ children }: TabProviderProps) {
     );
   }, [t]);
 
+  // When hosts are deleted, prune any restored tabs that reference
+  // hosts no longer in the database. This prevents stale tabs from
+  // polling dead /metrics/ endpoints after a page reload.
+  const didHostPruneRef = useRef(false);
+  React.useEffect(() => {
+    if (didHostPruneRef.current) return;
+    const hostTabs = tabs.filter(
+      (tab) =>
+        tab.hostConfig &&
+        typeof (tab.hostConfig as Record<string, unknown>).id === "number",
+    );
+    if (hostTabs.length === 0) return;
+
+    didHostPruneRef.current = true;
+
+    (async () => {
+      try {
+        const { getSSHHosts } = await import("@/ui/main-axios.ts");
+        const hosts = await getSSHHosts();
+        const validIds = new Set(hosts.map((h) => h.id));
+        setTabs((prev) => {
+          const pruned = prev.filter((tab) => {
+            if (!tab.hostConfig) return true;
+            const hostId = (tab.hostConfig as Record<string, unknown>)
+              .id as number;
+            return !hostId || validIds.has(hostId);
+          });
+          if (pruned.length === prev.length) return prev;
+          return enforcePinOrder(pruned);
+        });
+      } catch {
+        // API not available yet — skip pruning
+      }
+    })();
+  }, [tabs]);
+
   function computeUniqueTitle(
     tabType: Tab["type"],
     desiredTitle: string | undefined,

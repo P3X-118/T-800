@@ -860,6 +860,20 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           );
         }
         terminal.onData((data) => {
+          // CSI size report responses from the ImageAddon
+          // (enableSizeReports) match \x1b[<n>;<h>;<w>t. When a
+          // remote program like chafa actively queries terminal size,
+          // it reads these from stdin — so we must let them through.
+          // But if they arrive when only the shell prompt is running,
+          // readline echoes them as visible text (";1072;1319t").
+          // Filter them out ONLY when the entire onData payload is
+          // nothing but size reports — that means no program
+          // requested them; it's a stale response from the MOTD.
+          const stripped = data.replace(/\x1b\[\d+;\d+;\d+t/g, "");
+          if (!stripped && data.length > 0) {
+            // Entire payload was size report(s) — suppress
+            return;
+          }
           trackInput(data);
           ws.send(JSON.stringify({ type: "input", data }));
         });
@@ -876,14 +890,28 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           const msg = JSON.parse(event.data);
           if (msg.type === "data") {
             if (typeof msg.data === "string") {
-              const syntaxHighlightingEnabled =
-                localStorage.getItem("terminalSyntaxHighlighting") === "true";
+              // Binary data (sixel, images) is base64-encoded by the
+              // backend to survive JSON/UTF-8 transport losslessly.
+              // Decode it back to a Uint8Array so xterm's ImageAddon
+              // can process the raw bytes.
+              if (msg.encoding === "base64") {
+                const binaryStr = atob(msg.data);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) {
+                  bytes[i] = binaryStr.charCodeAt(i);
+                }
+                terminal.write(bytes);
+              } else {
+                const syntaxHighlightingEnabled =
+                  localStorage.getItem("terminalSyntaxHighlighting") ===
+                  "true";
 
-              const outputData = syntaxHighlightingEnabled
-                ? highlightTerminalOutput(msg.data)
-                : msg.data;
+                const outputData = syntaxHighlightingEnabled
+                  ? highlightTerminalOutput(msg.data)
+                  : msg.data;
 
-              terminal.write(outputData);
+                terminal.write(outputData);
+              }
               const sudoPasswordPattern =
                 /(?:\[sudo\][^\n]*:\s*$|sudo:[^\n]*password[^\n]*required)/i;
               const passwordToFill =
@@ -1676,7 +1704,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       terminal.loadAddon(clipboardAddon);
       terminal.loadAddon(unicode11Addon);
       terminal.loadAddon(webLinksAddon);
-      terminal.loadAddon(imageAddon);
+      try {
+        terminal.loadAddon(imageAddon);
+      } catch {
+        // ImageAddon failed to load — sixel won't render but terminal
+        // still works.
+      }
 
       terminal.unicode.activeVersion = "11";
 

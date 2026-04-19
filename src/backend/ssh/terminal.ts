@@ -1354,11 +1354,56 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
           stream.on("data", (data: Buffer) => {
             try {
-              const utf8String = data.toString("utf-8");
               const session = sessionManager.getSession(boundSessionId);
-              if (session) {
-                sessionManager.bufferOutput(boundSessionId!, utf8String);
+              if (!session) return;
 
+              // Check if every byte is valid UTF-8 by looking for the
+              // replacement character that Node inserts for malformed
+              // sequences. Sixel / image data contains raw bytes that
+              // aren't valid UTF-8; sending them as-is corrupts the
+              // stream. When non-UTF-8 bytes are detected, send the
+              // buffer as base64 so the client can decode it losslessly.
+              const utf8String = data.toString("utf-8");
+              const hasReplacementChar = utf8String.includes("\uFFFD");
+              const isBinaryData =
+                hasReplacementChar &&
+                !data.includes(0xef) // U+FFFD in UTF-8 is EF BF BD
+                  ? true
+                  : hasReplacementChar &&
+                    (() => {
+                      // Verify the replacement char isn't genuinely in
+                      // the source by checking the raw bytes for EF BF BD.
+                      const efbfbd = Buffer.from([0xef, 0xbf, 0xbd]);
+                      let idx = 0;
+                      let genuine = 0;
+                      while (
+                        (idx = data.indexOf(efbfbd, idx)) !== -1
+                      ) {
+                        genuine++;
+                        idx += 3;
+                      }
+                      const replacements = (
+                        utf8String.match(/\uFFFD/g) || []
+                      ).length;
+                      return replacements > genuine;
+                    })();
+
+              if (isBinaryData) {
+                // Binary-safe path: base64 encode, client decodes
+                const b64 = data.toString("base64");
+                sessionManager.bufferOutput(boundSessionId!, utf8String);
+                if (session.attachedWs?.readyState === WebSocket.OPEN) {
+                  session.attachedWs.send(
+                    JSON.stringify({
+                      type: "data",
+                      data: b64,
+                      encoding: "base64",
+                    }),
+                  );
+                }
+              } else {
+                // Normal UTF-8 text path
+                sessionManager.bufferOutput(boundSessionId!, utf8String);
                 if (session.attachedWs?.readyState === WebSocket.OPEN) {
                   session.attachedWs.send(
                     JSON.stringify({ type: "data", data: utf8String }),
@@ -1371,14 +1416,20 @@ wss.on("connection", async (ws: WebSocket, req) => {
                 hostId: id,
                 dataLength: data.length,
               });
-              const fallback = data.toString("latin1");
+              const fallback = data.toString("base64");
               const session = sessionManager.getSession(boundSessionId);
               if (session) {
-                sessionManager.bufferOutput(boundSessionId!, fallback);
-
+                sessionManager.bufferOutput(
+                  boundSessionId!,
+                  data.toString("latin1"),
+                );
                 if (session.attachedWs?.readyState === WebSocket.OPEN) {
                   session.attachedWs.send(
-                    JSON.stringify({ type: "data", data: fallback }),
+                    JSON.stringify({
+                      type: "data",
+                      data: fallback,
+                      encoding: "base64",
+                    }),
                   );
                 }
               }

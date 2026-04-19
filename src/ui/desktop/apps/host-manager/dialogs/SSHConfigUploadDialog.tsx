@@ -11,7 +11,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, KeyRound, FileText, CheckCircle2 } from "lucide-react";
-import { importSSHConfigFromUpload } from "@/ui/main-axios";
+import {
+  importSSHConfigFromUpload,
+  batchVerifyHosts,
+  getSSHHosts,
+} from "@/ui/main-axios";
 
 interface SSHConfigUploadDialogProps {
   open: boolean;
@@ -57,9 +61,12 @@ export function SSHConfigUploadDialog({
   const [keyContents, setKeyContents] = useState<Record<string, string>>({});
   const [keyFileNames, setKeyFileNames] = useState<Record<string, string>>({});
   const [overwrite, setOverwrite] = useState(false);
+  const [skipMissingKeys, setSkipMissingKeys] = useState(false);
   const [configDragOver, setConfigDragOver] = useState(false);
   const [keyDragOver, setKeyDragOver] = useState<string | null>(null);
   const configInputRef = useRef<HTMLInputElement | null>(null);
+  const keyFolderInputRef = useRef<HTMLInputElement | null>(null);
+  const keyMultiInputRef = useRef<HTMLInputElement | null>(null);
   const importInFlightRef = useRef(false);
 
   const reset = () => {
@@ -70,6 +77,7 @@ export function SSHConfigUploadDialog({
     setKeyContents({});
     setKeyFileNames({});
     setOverwrite(false);
+    setSkipMissingKeys(false);
   };
 
   const loadConfigFromFile = async (file: File) => {
@@ -124,6 +132,50 @@ export function SSHConfigUploadDialog({
     await loadKeyFromFile(identityFile, file);
   };
 
+  const matchAndLoadKeyFiles = async (files: FileList | File[]) => {
+    const basenameToIdFile = new Map<string, string>();
+    for (const idFile of identityFiles) {
+      const parts = idFile.split("/");
+      const base = parts[parts.length - 1];
+      if (base && !basenameToIdFile.has(base)) {
+        basenameToIdFile.set(base, idFile);
+      }
+    }
+
+    let matched = 0;
+    for (const file of Array.from(files)) {
+      const idFile = basenameToIdFile.get(file.name);
+      if (idFile && !keyContents[idFile]) {
+        await loadKeyFromFile(idFile, file);
+        matched++;
+      }
+    }
+
+    if (matched > 0) {
+      toast.success(`Auto-matched ${matched} key file${matched > 1 ? "s" : ""}`);
+    } else {
+      toast.message("No matching key files found");
+    }
+  };
+
+  const handleKeyFolder = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = e.target.files;
+    e.target.value = "";
+    if (!files || files.length === 0) return;
+    await matchAndLoadKeyFiles(files);
+  };
+
+  const handleKeyMultiSelect = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = e.target.files;
+    e.target.value = "";
+    if (!files || files.length === 0) return;
+    await matchAndLoadKeyFiles(files);
+  };
+
   const handleImport = async () => {
     if (!configText) {
       toast.error("No SSH config loaded");
@@ -141,6 +193,7 @@ export function SSHConfigUploadDialog({
         configText,
         overwrite,
         keyContents,
+        skipMissingKeys,
       );
 
       const parts: string[] = [];
@@ -148,6 +201,8 @@ export function SSHConfigUploadDialog({
       if (result.updated > 0) parts.push(`${result.updated} updated`);
       if (result.skipped > 0)
         parts.push(`${result.skipped} skipped (already exist)`);
+      if (result.skippedMissingKeys > 0)
+        parts.push(`${result.skippedMissingKeys} skipped (no key provided)`);
       if (result.failed > 0) parts.push(`${result.failed} failed`);
       if (result.credentialsCreated > 0)
         parts.push(`${result.credentialsCreated} credentials`);
@@ -176,6 +231,30 @@ export function SSHConfigUploadDialog({
       onCompleted();
       onOpenChange(false);
       reset();
+
+      // Auto-verify host keys for all imported hosts so the user
+      // doesn't have to accept each one manually on first connect.
+      // If the backend returned specific IDs, use those; otherwise
+      // fetch all hosts and verify everything.
+      try {
+        let idsToVerify = result.importedHostIds ?? [];
+        if (idsToVerify.length === 0) {
+          const allHosts = await getSSHHosts();
+          idsToVerify = allHosts.map((h) => h.id);
+        }
+        if (idsToVerify.length > 0) {
+          toast.message(
+            `Verifying ${idsToVerify.length} host keys...`,
+          );
+          const verify = await batchVerifyHosts(idsToVerify);
+          const s = verify.summary;
+          toast.success(
+            `Verified: ${s.success} ok, ${s.authFailed} auth failed, ${s.unreachable + s.timeout} unreachable`,
+          );
+        }
+      } catch {
+        // Non-fatal — hosts are imported, verification can be retried
+      }
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -273,13 +352,57 @@ export function SSHConfigUploadDialog({
         {identityFiles.length > 0 && step !== "config" && (
           <>
             <div className="border-t border-edge my-1" />
-            <div className="text-sm font-medium text-foreground mb-1">
-              SSH Key Files ({keysProvided}/{identityFiles.length} provided)
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-medium text-foreground">
+                SSH Key Files ({keysProvided}/{identityFiles.length} provided)
+              </div>
+              <div className="flex gap-1">
+                <label>
+                  <input
+                    ref={keyMultiInputRef}
+                    type="file"
+                    multiple
+                    accept="*"
+                    className="hidden"
+                    onChange={handleKeyMultiSelect}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="cursor-pointer"
+                  >
+                    <span>
+                      <KeyRound className="h-3.5 w-3.5 mr-1" />
+                      Select Keys
+                    </span>
+                  </Button>
+                </label>
+                <label>
+                  <input
+                    ref={keyFolderInputRef}
+                    type="file"
+                    className="hidden"
+                    {...({ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>)}
+                    onChange={handleKeyFolder}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="cursor-pointer"
+                  >
+                    <span>
+                      <Upload className="h-3.5 w-3.5 mr-1" />
+                      Select Folder
+                    </span>
+                  </Button>
+                </label>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              Upload the private key files referenced in your config. Skip
-              any you don't have — those hosts will be imported without key
-              auth and you can add keys later.
+              Select your <code>~/.ssh</code> folder to auto-match all
+              referenced keys, or upload them individually below.
             </p>
             <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto thin-scrollbar">
               {identityFiles.map((idFile) => {
@@ -359,20 +482,32 @@ export function SSHConfigUploadDialog({
           </>
         )}
 
-        {/* Overwrite toggle */}
-        {configText && (
-          <label className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
-            <Input
-              type="checkbox"
-              className="h-4 w-4 rounded"
-              checked={overwrite}
-              onChange={(e) =>
-                setOverwrite((e.target as HTMLInputElement).checked)
-              }
-            />
-            Update existing hosts (same IP/port/user) instead of skipping
-          </label>
-        )}
+        {/* Missing keys warning + skip toggle */}
+        {identityFiles.length > 0 &&
+          keysProvided < identityFiles.length &&
+          step !== "config" && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div className="text-xs text-yellow-500">
+                {identityFiles.length - keysProvided} key
+                {identityFiles.length - keysProvided > 1 ? "s" : ""} not
+                provided — those hosts will import without key auth.
+              </div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Input
+                  type="checkbox"
+                  className="h-4 w-4 rounded"
+                  checked={skipMissingKeys}
+                  onChange={(e) =>
+                    setSkipMissingKeys(
+                      (e.target as HTMLInputElement).checked,
+                    )
+                  }
+                />
+                Skip hosts without a provided key
+              </label>
+            </div>
+          )}
+
 
         <DialogFooter>
           <Button

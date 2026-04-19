@@ -123,7 +123,11 @@ export function HostManagerViewer({
 }: SSHManagerHostViewerProps) {
   const { t } = useTranslation();
   const { confirmWithToast } = useConfirmation();
-  const { addTab } = useTabs();
+  const { addTab, tabs: tabList, removeTab } = useTabs() as {
+    addTab: (tab: { type: string; [key: string]: unknown }) => number;
+    tabs: Array<{ id: number; type: string; hostConfig?: { id: number }; [key: string]: unknown }>;
+    removeTab: (tabId: number) => void;
+  };
   const [hosts, setHosts] = useState<SSHHost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -307,6 +311,15 @@ export function HostManagerViewer({
       async () => {
         try {
           await deleteSSHHost(hostId);
+          // Close any open tabs referencing this host
+          const stale = tabList.filter(
+            (t) => t.hostConfig?.id === hostId,
+          );
+          for (const tab of stale) {
+            removeTab(tab.id);
+            const tabKey = `${hostId}_${(tab as Record<string, unknown>).instanceId || ""}`;
+            localStorage.removeItem(`t800_session_${tabKey}`);
+          }
           toast.success(t("hosts.hostDeletedSuccessfully", { name: hostName }));
           await fetchHosts();
           window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));

@@ -140,6 +140,7 @@ export function LeftSidebar({
     tabs: tabList,
     addTab,
     setCurrentTab,
+    removeTab,
     updateHostConfig,
     splitLayout,
     setSplitLayout,
@@ -155,6 +156,7 @@ export function LeftSidebar({
     }>;
     addTab: (tab: { type: string; [key: string]: unknown }) => number;
     setCurrentTab: (id: number) => void;
+    removeTab: (tabId: number) => void;
     updateHostConfig: (id: number, config: unknown) => void;
     splitLayout: SplitLayoutNode | null;
     setSplitLayout: (layout: SplitLayoutNode | null) => void;
@@ -675,12 +677,27 @@ export function LeftSidebar({
           /* continue */
         }
       }
+      // Close any open tabs that reference the deleted hosts so
+      // terminals / server-stats don't keep polling dead endpoints.
+      const deletedIdSet = new Set(hostIds);
+      const tabsToClose = tabList.filter(
+        (t) =>
+          t.hostConfig?.id !== undefined &&
+          deletedIdSet.has(t.hostConfig.id),
+      );
+      for (const tab of tabsToClose) {
+        removeTab(tab.id);
+        // Clean up persisted session IDs
+        const tabId = `${tab.hostConfig?.id}_${(tab as Record<string, unknown>).instanceId || ""}`;
+        localStorage.removeItem(`t800_session_${tabId}`);
+      }
+
       toast.success(`Deleted ${deleted} hosts`);
       setSelectedFolders(new Set());
       window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
       window.dispatchEvent(new CustomEvent("folders:changed"));
     },
-    [hostsByFolder],
+    [hostsByFolder, tabList, removeTab],
   );
 
   const openFolderInSplitView = React.useCallback(

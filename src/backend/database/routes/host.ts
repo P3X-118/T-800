@@ -3363,6 +3363,7 @@ router.post(
       return res.status(401).json({ error: "Unauthorized" });
     }
     const overwrite = req.body?.overwrite === true;
+    const skipHostsWithoutKeys = req.body?.skipHostsWithoutKeys === true;
     const sourceType: "ssh" | "ansible" =
       req.body?.sourceType === "ansible" ? "ansible" : "ssh";
     const defaultFolder = sourceType === "ansible" ? "Ansible" : "Imported";
@@ -3396,29 +3397,22 @@ router.post(
       }
     }
 
-    // Accept config text directly from the client (uploaded from user's
-    // machine). Falls back to reading from the server's filesystem for
-    // backwards compatibility, but the client-upload path is preferred.
-    let configText: string;
-
-    if (req.body?.configText && typeof req.body.configText === "string") {
-      if (req.body.configText.length > MAX_CONFIG_BYTES) {
-        return res.status(413).json({
-          error: `Uploaded config exceeds ${MAX_CONFIG_BYTES / 1024 / 1024} MB`,
-        });
-      }
-      configText = req.body.configText;
-    } else {
-      const homeDir = os.homedir();
-      const configPath = path.join(homeDir, ".ssh", "config");
-      try {
-        configText = fs.readFileSync(configPath, "utf8");
-      } catch {
-        return res.status(404).json({
-          error: "Could not read SSH config from server filesystem",
-        });
-      }
+    // Config text must be uploaded from the user's machine — we never
+    // read from the server's filesystem.
+    if (
+      !req.body?.configText ||
+      typeof req.body.configText !== "string"
+    ) {
+      return res
+        .status(400)
+        .json({ error: "configText is required (upload from client)" });
     }
+    if (req.body.configText.length > MAX_CONFIG_BYTES) {
+      return res.status(413).json({
+        error: `Uploaded config exceeds ${MAX_CONFIG_BYTES / 1024 / 1024} MB`,
+      });
+    }
+    const configText: string = req.body.configText;
 
     let entries;
     try {
@@ -3445,44 +3439,13 @@ router.post(
       });
     }
 
-    const homeDir = os.homedir();
-    const sshRoot = path.resolve(path.join(homeDir, ".ssh"));
-
-    // Resolve a possibly-tilde-prefixed path against the backend's home
-    // dir AND verify it stays inside ~/.ssh/. Returns null if the
-    // resolved path escapes the root (e.g. `../../etc/passwd`) or is an
-    // absolute path outside ~/.ssh/.
-    const safeResolveKeyPath = (p: string): string | null => {
-      let expanded = p;
-      if (p.startsWith("~/") || p === "~") {
-        expanded = path.join(homeDir, p.slice(1));
-      } else if (!path.isAbsolute(p)) {
-        expanded = path.join(sshRoot, p);
-      }
-      const resolved = path.resolve(expanded);
-      const rel = path.relative(sshRoot, resolved);
-      if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
-        return resolved;
-      }
-      return null;
-    };
-
-    // Step 1: For each unique (user, identityFile) pair, try to resolve the
-    // key. We first check if the user uploaded the key contents in the
-    // request body, then fall back to reading from the server's filesystem.
+    // Step 1: For each unique (user, identityFile) pair, check the
+    // keys uploaded by the client. We never read from the server's
+    // filesystem — all key material comes from the user's machine.
     const credentialIdByPairKey = new Map<string, number>();
     const pairKey = (user: string, idFile: string) => `${user}::${idFile}`;
     const credentialErrors: string[] = [];
     const unreadablePairs = new Set<string>();
-
-    sshLogger.info("Credential resolution starting", {
-      operation: "ssh_config_import_creds",
-      entryCount: entries.length,
-      uploadedKeyPaths: Object.keys(uploadedKeys),
-      entriesWithIdentityFile: entries
-        .filter((e) => e.identityFile)
-        .map((e) => ({ name: e.name, identityFile: e.identityFile, user: e.user })),
-    });
 
     for (const entry of entries) {
       if (!entry.identityFile) continue;
@@ -3491,39 +3454,16 @@ router.post(
       if (credentialIdByPairKey.has(key)) continue;
       if (unreadablePairs.has(key)) continue;
 
-      // Check uploaded keys first (keyed by the original IdentityFile path)
-      let keyContents: string | undefined =
+      const keyContents: string | undefined =
         uploadedKeys[entry.identityFile] ||
         uploadedKeys[path.basename(entry.identityFile)];
 
       if (!keyContents) {
-        // Fall back to reading from the server's filesystem, but only if
-        // the path stays inside ~/.ssh/. Blocks path traversal attempts
-        // like `IdentityFile ../../etc/passwd`.
-        const resolvedKeyPath = safeResolveKeyPath(entry.identityFile);
-        if (!resolvedKeyPath) {
-          unreadablePairs.add(key);
-          continue;
-        }
-        try {
-          keyContents = fs.readFileSync(resolvedKeyPath, "utf8");
-        } catch {
-          unreadablePairs.add(key);
-          continue;
-        }
+        unreadablePairs.add(key);
+        continue;
       }
 
-      sshLogger.info("Credential key resolution attempt", {
-        operation: "ssh_config_import_creds",
-        host: entry.name,
-        identityFile: entry.identityFile,
-        user,
-        keyFound: !!keyContents,
-        keyLength: keyContents?.length ?? 0,
-        hasPemHeader: keyContents?.includes("-----BEGIN") ?? false,
-      });
-
-      if (!keyContents || !keyContents.includes("-----BEGIN")) {
+      if (!keyContents.includes("-----BEGIN")) {
         unreadablePairs.add(key);
         continue;
       }
@@ -3589,9 +3529,11 @@ router.post(
       success: 0,
       updated: 0,
       skipped: 0,
+      skippedMissingKeys: 0,
       failed: 0,
       errors: [] as string[],
     };
+    const importedHostIds: number[] = [];
     const aliasToHostId = new Map<string, number>();
     // Hosts that ended up with authType "none" because we couldn't read
     // their key. Grouped by (user, identityFile) so the frontend can prompt
@@ -3653,54 +3595,11 @@ router.post(
           ? credentialIdByPairKey.get(pairKey(user, entry.identityFile))
           : undefined;
 
-        const lookup = `${entry.hostname}:${entry.port}:${user}`;
-        if (existingByLookup.has(lookup)) {
-          const existing = existingByLookup.get(lookup)!;
-          aliasToHostId.set(entry.name, existing.id);
-          if (overwrite) {
-            // Update existing host with refreshed data from the config
-            try {
-              const updateData: Record<string, unknown> = {
-                name: entry.name,
-                updatedAt: new Date().toISOString(),
-              };
-              if (credId) {
-                updateData.authType = "credential";
-                updateData.credentialId = credId;
-              }
-              await SimpleDBOps.update(
-                hosts,
-                "ssh_data",
-                eq(hosts.id, existing.id),
-                updateData,
-                userId,
-              );
-              importResults.updated++;
-            } catch {
-              importResults.failed++;
-              importResults.errors.push(
-                `${entry.name}: failed to update existing host`,
-              );
-            }
-            // Track pending keys for overwritten hosts too
-            if (entry.identityFile && !credId) {
-              const pk = pairKey(user, entry.identityFile);
-              let bucket = pendingKeysByPair.get(pk);
-              if (!bucket) {
-                bucket = {
-                  identityFile: entry.identityFile,
-                  user,
-                  hostIds: [],
-                  hostNames: [],
-                };
-                pendingKeysByPair.set(pk, bucket);
-              }
-              bucket.hostIds.push(existing.id);
-              bucket.hostNames.push(entry.name);
-            }
-          } else {
-            importResults.skipped++;
-          }
+        // When the user opted to skip hosts without keys, drop entries
+        // that reference an IdentityFile but didn't get a credential
+        // (key wasn't uploaded).
+        if (skipHostsWithoutKeys && entry.identityFile && !credId) {
+          importResults.skippedMissingKeys++;
           continue;
         }
 
@@ -3709,6 +3608,60 @@ router.post(
           autoFolderByEntryIndex.get(i) ||
           defaultFolder;
         const entryTags = entry.extras?._tags || defaultTags;
+
+        const lookup = `${entry.hostname}:${entry.port}:${user}`;
+        if (existingByLookup.has(lookup)) {
+          const existing = existingByLookup.get(lookup)!;
+          aliasToHostId.set(entry.name, existing.id);
+          // Always update the existing host with the latest config
+          // data. Silently skipping duplicates caused confusion when
+          // re-importing after a failed delete — the user saw an
+          // error-like "N skipped" with no way to fix it.
+          try {
+            const updateData: Record<string, unknown> = {
+              name: entry.name,
+              folder: entryFolder,
+              tags: entryTags,
+              updatedAt: new Date().toISOString(),
+            };
+            if (credId) {
+              updateData.authType = "credential";
+              updateData.credentialId = credId;
+            }
+            await SimpleDBOps.update(
+              hosts,
+              "ssh_data",
+              eq(hosts.id, existing.id),
+              updateData,
+              userId,
+            );
+            importResults.updated++;
+            importedHostIds.push(existing.id);
+          } catch {
+            importResults.failed++;
+            importResults.errors.push(
+              `${entry.name}: failed to update existing host`,
+            );
+          }
+          // Track pending keys for updated hosts too
+          if (entry.identityFile && !credId) {
+            const pk = pairKey(user, entry.identityFile);
+            let bucket = pendingKeysByPair.get(pk);
+            if (!bucket) {
+              bucket = {
+                identityFile: entry.identityFile,
+                user,
+                hostIds: [],
+                hostNames: [],
+              };
+              pendingKeysByPair.set(pk, bucket);
+            }
+            bucket.hostIds.push(existing.id);
+            bucket.hostNames.push(entry.name);
+          }
+          continue;
+        }
+
         const sshDataObj: Record<string, unknown> = {
           userId,
           connectionType: "ssh",
@@ -3804,6 +3757,7 @@ router.post(
         )) as { id: number };
         aliasToHostId.set(entry.name, inserted.id);
         importResults.success++;
+        importedHostIds.push(inserted.id);
 
         // If this entry referenced an IdentityFile but we couldn't get the
         // key, queue it for the follow-up "provide keys" step.
@@ -3887,10 +3841,9 @@ router.post(
       proxyJumpFailed,
       credentialsCreated: credentialIdByPairKey.size,
       credentialErrors,
-      configPath: req.body?.configText
-        ? "uploaded"
-        : path.join(homeDir, ".ssh", "config"),
+      configPath: "uploaded",
       sourceType,
+      importedHostIds,
       pendingKeyHosts: Array.from(pendingKeysByPair.values()),
     });
   },

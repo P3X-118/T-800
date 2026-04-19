@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { CardTitle } from "@/components/ui/card.tsx";
 import {
   ChevronDown,
@@ -237,7 +238,7 @@ export function FolderCard({
         </Button>
       </div>
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
           className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -288,7 +289,8 @@ export function FolderCard({
               Delete folder ({hosts.length} hosts)
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
       {isExpanded && (
         <div className="flex flex-col p-2 gap-y-3">
