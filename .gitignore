@@ -32,3 +32,4 @@ dist-ssr
 
 # Hot-reload runtime state (created by docker/entrypoint.dev.sh inside the bind-mounted repo)
 /nginx/
+/data/
