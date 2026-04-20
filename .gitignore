@@ -29,3 +29,6 @@ dist-ssr
 /nul
 /.vscode/
 /CLAUDE.md
+
+# Hot-reload runtime state (created by docker/entrypoint.dev.sh inside the bind-mounted repo)
+/nginx/

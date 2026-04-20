@@ -63,8 +63,20 @@ export default defineConfig({
     port: 5175,
     host: "0.0.0.0",
     allowedHosts: true,
+    // HMR host defaults to the mesh IP for local dev on the dev host.
+    // When served behind Caddy (e.g. t1000.d.sgc.ai), the container
+    // sets VITE_HMR_HOST / VITE_HMR_CLIENT_PORT / VITE_HMR_PROTOCOL so
+    // the browser opens its HMR WebSocket on the public URL instead.
     hmr: {
-      host: "169.254.0.123",
+      host: process.env.VITE_HMR_HOST || "169.254.0.123",
+      ...(process.env.VITE_HMR_CLIENT_PORT
+        ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT) }
+        : {}),
+      ...(process.env.VITE_HMR_PROTOCOL
+        ? {
+            protocol: process.env.VITE_HMR_PROTOCOL as "ws" | "wss",
+          }
+        : {}),
     },
     proxy: {
       // Auth, Host, RBAC APIs (port 30001)

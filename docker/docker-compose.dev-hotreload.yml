@@ -1,0 +1,87 @@
+# T-800 dev stack with hot reload — t1000.d.sgc.ai
+#
+# Drop-in replacement for docker-compose.dev.yml when you want source
+# edits on the host to reflect in t1000 immediately. External shape is
+# identical to docker-compose.dev.yml:
+#   Caddy (169.254.0.36) → t1000.d.sgc.ai → 169.254.0.123:5175 (host)
+#                                         → container:8080 (nginx)
+# Internally nginx now reverse-proxies / to a Vite dev server (for HMR)
+# instead of serving the compiled /app/html bundle.
+#
+# Usage (run from repo root):
+#   docker compose -f docker/docker-compose.dev-hotreload.yml up --build -d
+# To revert to production-mode dev (no hot reload):
+#   docker compose -f docker/docker-compose.dev-hotreload.yml down
+#   docker compose -f docker/docker-compose.dev.yml up -d
+#
+# Does NOT touch the t800-prod stack (separate project name, volumes,
+# network, and bind port 8181).
+
+name: t1000-dev
+
+services:
+  t1000:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    image: t-800:dev-hotreload
+    container_name: t1000-dev
+    restart: unless-stopped
+    ports:
+      # Same external bind as docker-compose.dev.yml so Caddy config is
+      # unchanged. Host 5175 → container 8080 (nginx → Vite + backend).
+      - "169.254.0.123:5175:8080"
+    volumes:
+      # Bind-mount the repo so file edits on the host feed the
+      # watchers inside the container. node_modules lives inside a
+      # named volume so the container's rebuilt native modules (for
+      # the container's glibc) don't collide with the host's.
+      - ..:/app
+      - t1000-dev-hotreload-node-modules:/app/node_modules
+      - t1000-dev-data:/app/data
+    environment:
+      PORT: "8080"
+      ENABLE_SSL: "false"
+      DATA_DIR: "/app/data"
+      NODE_ENV: "development"
+      # Tell Vite the public-facing host so HMR's WebSocket URL is
+      # correct when the browser loaded the app via t1000.d.sgc.ai.
+      VITE_HMR_HOST: "t1000.d.sgc.ai"
+      VITE_HMR_CLIENT_PORT: "443"
+      VITE_HMR_PROTOCOL: "wss"
+      # Route the terminal/guac WebSockets through the reverse proxy
+      # (nginx → backend) on the same origin, matching production
+      # behavior. Without this the dev build would try direct to
+      # localhost:30002 which doesn't work through Caddy.
+      VITE_DEV_PROXY: "true"
+    depends_on:
+      - guacd
+    networks:
+      - t1000-dev-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: t1000-dev-guacd
+    restart: unless-stopped
+    networks:
+      - t1000-dev-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  t1000-dev-data:
+    driver: local
+  t1000-dev-hotreload-node-modules:
+    driver: local
+
+networks:
+  t1000-dev-net:
+    driver: bridge

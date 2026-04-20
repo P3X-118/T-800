@@ -1,0 +1,40 @@
+# Dev-only image for t1000.d.sgc.ai hot-reload stack.
+#
+# Unlike docker/Dockerfile (which compiles frontend + backend into a
+# static production bundle), this image ships only the runtime: Node,
+# nginx, and the native-build toolchain. The repo is bind-mounted into
+# /app at runtime, so source edits on the host are picked up by the
+# watchers (Vite HMR + tsc --watch + node --watch) inside the container.
+#
+# This image is NOT used for production. t800-prod keeps using Dockerfile.
+
+FROM node:22-slim
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        nginx \
+        gettext-base \
+        python3 \
+        make \
+        g++ \
+        openssl \
+        ca-certificates \
+        wget \
+        procps && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /app/nginx /app/nginx/logs /app/nginx/cache /app/nginx/client_body && \
+    touch /app/nginx/nginx.conf
+
+ENV NODE_ENV=development \
+    PORT=8080 \
+    DATA_DIR=/app/data
+
+EXPOSE 8080 30001 30002 30003 30004 30005 30006 30007 30008 30009
+
+# Entrypoint is invoked from the bind-mounted repo so edits to
+# docker/entrypoint.dev.sh on the host apply on the next container
+# restart without an image rebuild.
+CMD ["sh", "/app/docker/entrypoint.dev.sh"]
