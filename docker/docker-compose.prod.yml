@@ -19,7 +19,7 @@ name: t800-prod
 
 services:
   t800:
-    image: legitservices/t-800:release-2.0.0-05
+    image: legitservices/t-800:release-2.0.0-06
     container_name: t800-prod
     restart: unless-stopped
     ports:

@@ -19,7 +19,7 @@ name: t1000-dev
 
 services:
   t1000:
-    image: legitservices/t-800:release-2.0.0-05
+    image: legitservices/t-800:release-2.0.0-06
     container_name: t1000-dev
     restart: unless-stopped
     ports:
