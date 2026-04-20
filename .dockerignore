@@ -90,3 +90,7 @@ jspm_packages/
 .dynamodb/
 
 .tern-port
+
+# Hot-reload runtime state (bind-mounted by docker-compose.dev-hotreload.yml)
+nginx
+data
