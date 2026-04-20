@@ -505,7 +505,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
       const baseWsUrl = isDev
         ? import.meta.env.VITE_DEV_PROXY === "true"
-          ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/terminal`
+          ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ssh/websocket/`
           : `${window.location.protocol === "https:" ? "wss" : "ws"}://localhost:30002`
         : isElectron()
           ? (() => {
