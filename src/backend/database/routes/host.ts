@@ -3449,7 +3449,8 @@ router.post(
 
     for (const entry of entries) {
       if (!entry.identityFile) continue;
-      const user = entry.user || "default";
+      const user = entry.user;
+      if (!user) continue;
       const key = pairKey(user, entry.identityFile);
       if (credentialIdByPairKey.has(key)) continue;
       if (unreadablePairs.has(key)) continue;
@@ -3590,7 +3591,11 @@ router.post(
           importResults.errors.push(`${entry.name}: missing HostName`);
           continue;
         }
-        const user = entry.user || "root";
+        const user = entry.user;
+        if (!user) {
+          importResults.skipped++;
+          continue;
+        }
         const credId = entry.identityFile
           ? credentialIdByPairKey.get(pairKey(user, entry.identityFile))
           : undefined;
@@ -5425,8 +5430,7 @@ router.post(
     if (!Array.isArray(hostIds) || hostIds.length === 0) {
       return res.status(400).json({ error: "hostIds array required" });
     }
-    // Cap to prevent abuse.
-    const MAX_BATCH = 50;
+    const MAX_BATCH = 500;
     const ids = hostIds.slice(0, MAX_BATCH);
 
     const PER_HOST_TIMEOUT = 15_000;
@@ -5444,7 +5448,7 @@ router.post(
       userHosts.map((h) => [h.id as number, h]),
     );
 
-    const results: Array<{
+    type VerifyResult = {
       hostId: number;
       name: string;
       ip: string;
@@ -5454,42 +5458,28 @@ router.post(
       fingerprint?: string;
       keyType?: string;
       elapsedMs: number;
-    }> = [];
+    };
 
-    for (const id of ids) {
+    const verifyOne = async (id: number): Promise<VerifyResult> => {
       const host = hostMap.get(id);
       if (!host) {
-        results.push({
-          hostId: id,
-          name: "",
-          ip: "",
-          port: 0,
-          status: "error",
-          message: "Host not found",
-          elapsedMs: 0,
-        });
-        continue;
+        return {
+          hostId: id, name: "", ip: "", port: 0,
+          status: "error", message: "Host not found", elapsedMs: 0,
+        };
       }
-
       const start = Date.now();
       try {
         const authMgr = new SSHAuthManager({
-          userId,
-          hostId: id,
-          isKeyboardInteractive: false,
+          userId, hostId: id, isKeyboardInteractive: false,
           keyboardInteractiveResponded: false,
           keyboardInteractiveFinish: null,
-          totpPromptSent: false,
-          warpgateAuthPromptSent: false,
-          totpTimeout: null,
-          warpgateAuthTimeout: null,
-          totpAttempts: 0,
-          ws: null as never,
+          totpPromptSent: false, warpgateAuthPromptSent: false,
+          totpTimeout: null, warpgateAuthTimeout: null,
+          totpAttempts: 0, ws: null as never,
         });
         const creds = await authMgr.resolveCredentials({
-          id,
-          ip: host.ip as string,
-          port: host.port as number,
+          id, ip: host.ip as string, port: host.port as number,
           username: host.username as string,
           authType: (host.authType as string) || "none",
           credentialId: (host.credentialId as number) || undefined,
@@ -5499,21 +5489,14 @@ router.post(
         });
 
         const hostVerifier = await SSHHostKeyVerifier.createHostVerifier(
-          id,
-          host.ip as string,
-          host.port as number,
-          null, // no WebSocket — auto-accept
-          userId,
-          false,
+          id, host.ip as string, host.port as number,
+          null, userId, false,
         );
 
         const connectConfig: Record<string, unknown> = {
-          host: host.ip as string,
-          port: host.port as number,
-          username: creds.username,
-          hostVerifier,
-          readyTimeout: PER_HOST_TIMEOUT,
-          timeout: PER_HOST_TIMEOUT,
+          host: host.ip as string, port: host.port as number,
+          username: creds.username, hostVerifier,
+          readyTimeout: PER_HOST_TIMEOUT, timeout: PER_HOST_TIMEOUT,
         };
 
         if (creds.authType === "key" && creds.key) {
@@ -5524,8 +5507,7 @@ router.post(
         } else if (creds.authType === "credential") {
           if (creds.key) {
             connectConfig.privateKey = creds.key;
-            if (creds.keyPassword)
-              connectConfig.passphrase = creds.keyPassword;
+            if (creds.keyPassword) connectConfig.passphrase = creds.keyPassword;
           } else if (creds.password) {
             connectConfig.password = creds.password;
           }
@@ -5534,29 +5516,20 @@ router.post(
         const result = await new Promise<{
           status: "success" | "auth_failed" | "unreachable" | "timeout";
           message?: string;
-          fingerprint?: string;
-          keyType?: string;
         }>((resolve) => {
           const client = new SSHClient();
           const timer = setTimeout(() => {
             client.destroy();
             resolve({ status: "timeout", message: "Connection timed out" });
           }, PER_HOST_TIMEOUT);
-
           client.on("ready", () => {
-            clearTimeout(timer);
-            client.end();
+            clearTimeout(timer); client.end();
             resolve({ status: "success" });
           });
           client.on("error", (err: Error) => {
-            clearTimeout(timer);
-            client.destroy();
+            clearTimeout(timer); client.destroy();
             const msg = err.message || String(err);
-            if (
-              msg.includes("authentication") ||
-              msg.includes("Auth") ||
-              msg.includes("handshake")
-            ) {
+            if (msg.includes("authentication") || msg.includes("Auth") || msg.includes("handshake")) {
               resolve({ status: "auth_failed", message: msg });
             } else {
               resolve({ status: "unreachable", message: msg });
@@ -5565,25 +5538,31 @@ router.post(
           client.connect(connectConfig as Parameters<SSHClient["connect"]>[0]);
         });
 
-        results.push({
-          hostId: id,
-          name: (host.name as string) || "",
-          ip: host.ip as string,
-          port: host.port as number,
-          ...result,
-          elapsedMs: Date.now() - start,
-        });
+        return {
+          hostId: id, name: (host.name as string) || "",
+          ip: host.ip as string, port: host.port as number,
+          ...result, elapsedMs: Date.now() - start,
+        };
       } catch (err) {
-        results.push({
-          hostId: id,
-          name: (host.name as string) || "",
-          ip: host.ip as string,
-          port: host.port as number,
+        return {
+          hostId: id, name: (host.name as string) || "",
+          ip: host.ip as string, port: host.port as number,
           status: "error",
           message: err instanceof Error ? err.message : String(err),
           elapsedMs: Date.now() - start,
-        });
+        };
       }
+    };
+
+    // Run verifications in parallel with concurrency limit so we
+    // can process all hosts within a reasonable time even if many
+    // are unreachable (each times out at PER_HOST_TIMEOUT).
+    const CONCURRENCY = 20;
+    const results: VerifyResult[] = [];
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      const batch = ids.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(verifyOne));
+      results.push(...batchResults);
     }
 
     const summary = {

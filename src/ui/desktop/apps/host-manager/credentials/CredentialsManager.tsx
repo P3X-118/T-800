@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button.tsx";
 import { Badge } from "@/components/ui/badge.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -83,6 +84,11 @@ export function CredentialsManager({
   const [editingFolder, setEditingFolder] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [operationLoading, setOperationLoading] = useState(false);
+  const [folderContextMenu, setFolderContextMenu] = useState<{
+    folder: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const [showDeployDialog, setShowDeployDialog] = useState(false);
   const [deployingCredential, setDeployingCredential] =
     useState<Credential | null>(null);
@@ -313,6 +319,44 @@ export function CredentialsManager({
   const cancelFolderEdit = () => {
     setEditingFolder(null);
     setEditingFolderName("");
+  };
+
+  // Close folder context menu on outside click
+  useEffect(() => {
+    if (!folderContextMenu) return;
+    const close = () => setFolderContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+    };
+  }, [folderContextMenu]);
+
+  const handleDeleteFolder = async (folderName: string) => {
+    const folderCreds = credentialsByFolder[folderName];
+    if (!folderCreds || folderCreds.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete "${folderName}" and all ${folderCreds.length} credential${folderCreds.length > 1 ? "s" : ""} in it? Hosts using these credentials will lose their auth. This cannot be undone.`,
+      )
+    )
+      return;
+    setOperationLoading(true);
+    let deleted = 0;
+    for (const cred of folderCreds) {
+      try {
+        await deleteCredential(cred.id);
+        deleted++;
+      } catch {
+        /* continue */
+      }
+    }
+    toast.success(`Deleted ${deleted} credential${deleted > 1 ? "s" : ""}`);
+    setOperationLoading(false);
+    setFolderContextMenu(null);
+    fetchCredentials();
+    window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
   };
 
   const handleDragStart = (e: React.DragEvent, credential: Credential) => {
@@ -566,7 +610,18 @@ export function CredentialsManager({
                   defaultValue={Object.keys(credentialsByFolder)}
                 >
                   <AccordionItem value={folder} className="border-none">
-                    <AccordionTrigger className="px-2 py-1 bg-muted/20 border-b hover:no-underline rounded-t-md">
+                    <AccordionTrigger
+                      className="px-2 py-1 bg-muted/20 border-b hover:no-underline rounded-t-md"
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setFolderContextMenu({
+                          folder,
+                          x: e.clientX,
+                          y: e.clientY,
+                        });
+                      }}
+                    >
                       <div className="flex items-center gap-2 flex-1">
                         <Folder className="h-4 w-4" />
                         {editingFolder === folder ? (
@@ -872,6 +927,48 @@ export function CredentialsManager({
           )}
         </div>
       </ScrollArea>
+
+      {folderContextMenu &&
+        createPortal(
+          <div
+            className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[160px]"
+            style={{
+              left: folderContextMenu.x,
+              top: folderContextMenu.y,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {folderContextMenu.folder !==
+              t("credentials.uncategorized") && (
+              <>
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                  onClick={() => {
+                    startFolderEdit(folderContextMenu.folder);
+                    setFolderContextMenu(null);
+                  }}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  Rename
+                </button>
+                <div className="border-t border-edge my-1" />
+              </>
+            )}
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+              disabled={operationLoading}
+              onClick={() => {
+                handleDeleteFolder(folderContextMenu.folder);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete folder (
+              {credentialsByFolder[folderContextMenu.folder]?.length ?? 0}{" "}
+              credentials)
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {showViewer && viewingCredential && (
         <CredentialViewer
