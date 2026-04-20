@@ -860,20 +860,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           );
         }
         terminal.onData((data) => {
-          // CSI size report responses from the ImageAddon
-          // (enableSizeReports) match \x1b[<n>;<h>;<w>t. When a
-          // remote program like chafa actively queries terminal size,
-          // it reads these from stdin — so we must let them through.
-          // But if they arrive when only the shell prompt is running,
-          // readline echoes them as visible text (";1072;1319t").
-          // Filter them out ONLY when the entire onData payload is
-          // nothing but size reports — that means no program
-          // requested them; it's a stale response from the MOTD.
-          const stripped = data.replace(/\x1b\[\d+;\d+;\d+t/g, "");
-          if (!stripped && data.length > 0) {
-            // Entire payload was size report(s) — suppress
-            return;
-          }
+          // Pass everything through, including CSI size report
+          // responses (\x1b[<n>;<h>;<w>t) that xterm emits when a
+          // remote program sends `\x1b[14t` / `\x1b[16t` / `\x1b[18t`.
+          // Filtering them here breaks neofetch and chafa, which
+          // block for ~50ms waiting for the pixel-size reply and
+          // fall back to ASCII if it doesn't arrive.
           trackInput(data);
           ws.send(JSON.stringify({ type: "input", data }));
         });

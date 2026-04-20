@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { Client, type ClientChannel, type PseudoTtyOptions } from "ssh2";
 import { parse as parseUrl } from "url";
+import { StringDecoder } from "node:string_decoder";
 import axios from "axios";
 import { getDb } from "../database/db/index.js";
 import { sshCredentials, hosts } from "../database/db/schema.js";
@@ -1352,18 +1353,25 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
           const boundSessionId = currentSessionId;
 
+          // Per-stream UTF-8 decoder preserves partial multi-byte
+          // sequences across chunks. Without this, a chunk ending
+          // mid-codepoint (common for UTF-8 text and large sixel
+          // DCS blocks split across TCP/SSH frames) produces U+FFFD
+          // replacement characters, which break xterm's DCS parser
+          // and prevent the ImageAddon from rendering sixel images.
+          const utf8Decoder = new StringDecoder("utf8");
+
           stream.on("data", (data: Buffer) => {
             try {
               const session = sessionManager.getSession(boundSessionId);
               if (!session) return;
 
-              // Check if every byte is valid UTF-8 by looking for the
-              // replacement character that Node inserts for malformed
-              // sequences. Sixel / image data contains raw bytes that
-              // aren't valid UTF-8; sending them as-is corrupts the
-              // stream. When non-UTF-8 bytes are detected, send the
-              // buffer as base64 so the client can decode it losslessly.
-              const utf8String = data.toString("utf-8");
+              // Decode with a stateful decoder so boundary-split UTF-8
+              // sequences are buffered until the next chunk completes
+              // them. After decoding, any remaining U+FFFD in the
+              // output indicates genuinely non-UTF-8 bytes (raw image
+              // formats, binary noise) — those take the base64 path.
+              const utf8String = utf8Decoder.write(data);
               const hasReplacementChar = utf8String.includes("\uFFFD");
               const isBinaryData =
                 hasReplacementChar &&
@@ -1438,6 +1446,14 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
           stream.on("close", () => {
             const session = sessionManager.getSession(boundSessionId);
+            // Drain any residual buffered UTF-8 bytes from the decoder.
+            const trailing = utf8Decoder.end();
+            if (trailing && session?.attachedWs?.readyState === WebSocket.OPEN) {
+              session.attachedWs.send(
+                JSON.stringify({ type: "data", data: trailing }),
+              );
+            }
+
             if (session?.attachedWs?.readyState === WebSocket.OPEN) {
               session.attachedWs.send(
                 JSON.stringify({
