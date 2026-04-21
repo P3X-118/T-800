@@ -10,7 +10,7 @@ import {
   Save,
   Pencil,
   Trash2,
-  Plus,
+  Monitor,
   ChevronsDownUp,
   ChevronsUpDown,
 } from "lucide-react";
@@ -56,6 +56,10 @@ import {
   deleteSSHHost,
 } from "@/ui/main-axios.ts";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
+import {
+  unlockCtrlLock,
+  useCtrlLockMode,
+} from "@/hooks/use-ctrl-lock.ts";
 import type { SSHFolder, SSHHost } from "@/types/index.ts";
 
 interface SidebarProps {
@@ -97,28 +101,44 @@ export function LeftSidebar({
     });
   const [isSidebarHoverOpen, setIsSidebarHoverOpen] =
     useState<boolean>(false);
-  // Effective state — true if persisted-open OR temporarily hover-open. Hover
-  // state is never persisted, so a reload returns to the user's last
-  // committed toggle state.
-  const isSidebarOpen = isSidebarOpenPersisted || isSidebarHoverOpen;
+  const ctrlLockMode = useCtrlLockMode();
+  const ctrlLocked = ctrlLockMode !== "none";
+  // Effective state.
+  //  - ctrlLockMode "open"   → forced visibly open regardless of persisted/hover.
+  //  - ctrlLockMode "closed" → forced visibly closed; hover is disabled too,
+  //    so the only way out is clicking the manual toggle button below.
+  //  - "none" (default)      → persisted OR hover.
+  const isSidebarOpen =
+    ctrlLockMode === "open"
+      ? true
+      : ctrlLockMode === "closed"
+        ? false
+        : isSidebarOpenPersisted || isSidebarHoverOpen;
   // Wrapper that the toggle button uses to lock state. Toggling permanent
   // close should also clear any in-flight hover state so the sidebar
-  // collapses immediately rather than lingering.
+  // collapses immediately rather than lingering. Also clears the Ctrl
+  // lock — the user clicking their own button is the canonical exit
+  // from a Ctrl-locked mode.
   const setIsSidebarOpen = React.useCallback((open: boolean) => {
+    unlockCtrlLock();
     setIsSidebarOpenPersisted(open);
     if (!open) setIsSidebarHoverOpen(false);
   }, []);
 
   // ── Hover-open handling for the closed sidebar ───────────────────────
+  // Gated off while Ctrl-locked in either direction, so neither the
+  // sidebar nor its adjacent hover strip can react to mouse movement.
   const sidebarHoverCloseTimeoutRef = React.useRef<number | null>(null);
   const handleSidebarHoverEnter = React.useCallback(() => {
+    if (ctrlLocked) return;
     if (sidebarHoverCloseTimeoutRef.current != null) {
       window.clearTimeout(sidebarHoverCloseTimeoutRef.current);
       sidebarHoverCloseTimeoutRef.current = null;
     }
     setIsSidebarHoverOpen(true);
-  }, []);
+  }, [ctrlLocked]);
   const handleSidebarHoverLeave = React.useCallback(() => {
+    if (ctrlLocked) return;
     if (sidebarHoverCloseTimeoutRef.current != null) {
       window.clearTimeout(sidebarHoverCloseTimeoutRef.current);
     }
@@ -126,7 +146,7 @@ export function LeftSidebar({
       setIsSidebarHoverOpen(false);
       sidebarHoverCloseTimeoutRef.current = null;
     }, 120);
-  }, []);
+  }, [ctrlLocked]);
   React.useEffect(
     () => () => {
       if (sidebarHoverCloseTimeoutRef.current != null) {
@@ -824,10 +844,10 @@ export function LeftSidebar({
                   <Button
                     variant="outline"
                     className="flex-1 h-9 !px-0 border-2 !border-edge opacity-50 cursor-not-allowed"
-                    title="Coming soon"
+                    title="VNC (coming soon)"
                     disabled
                   >
-                    <Plus className="h-4 w-4" />
+                    <Monitor className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="outline"
@@ -1135,8 +1155,15 @@ export function LeftSidebar({
         </div>
       </SidebarProvider>
 
-      {!isSidebarOpenPersisted && (
+      {/* Keyed on the derived `isSidebarOpen` (which includes the
+          Ctrl-lock override) rather than `isSidebarOpenPersisted`, so
+          the strip stays reachable when Ctrl-lock forces the sidebar
+          closed over a persisted-open state. Hover handlers are
+          already no-ops while Ctrl-locked; double-click still unlocks
+          and opens via setIsSidebarOpen -> unlockCtrlLock. */}
+      {!isSidebarOpen && (
         <div
+          onClick={() => setIsSidebarOpen(true)}
           onDoubleClick={() => setIsSidebarOpen(true)}
           onMouseEnter={handleSidebarHoverEnter}
           onMouseLeave={handleSidebarHoverLeave}

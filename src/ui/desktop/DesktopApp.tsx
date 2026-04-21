@@ -27,6 +27,7 @@ import { CommandPalette } from "@/ui/desktop/apps/command-palette/CommandPalette
 import { getUserInfo, logoutUser, isElectron } from "@/ui/main-axios.ts";
 import { useTheme } from "@/components/theme-provider";
 import { dbHealthMonitor } from "@/lib/db-health-monitor.ts";
+import { installCtrlLockListener } from "@/hooks/use-ctrl-lock.ts";
 import { useTranslation } from "react-i18next";
 
 function AppContent({
@@ -237,7 +238,13 @@ function AppContent({
 
     checkAuth();
 
-    const handleStorageChange = () => checkAuth();
+    // Only re-check auth when the JWT itself changes in another tab.
+    // The multi-session heartbeat writes to t800_session_hb:* every few
+    // seconds; without this filter it would retrigger checkAuth and a
+    // cascade of refetches in every sibling tab on each beat.
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === null || e.key === "jwt") checkAuth();
+    };
     window.addEventListener("storage", handleStorageChange);
 
     return () => window.removeEventListener("storage", handleStorageChange);
@@ -253,6 +260,10 @@ function AppContent({
   useEffect(() => {
     onAuthStateChange?.(isAuthenticated);
   }, [isAuthenticated, onAuthStateChange]);
+
+  // Global double-tap-Ctrl listener: toggles both sidebars into a
+  // locked-open state where hover handlers are ignored.
+  useEffect(() => installCtrlLockListener(), []);
 
   const handleAuthSuccess = useCallback(
     (authData: {
