@@ -152,17 +152,18 @@ networks:
     driver: bridge
 ```
 
-## Production deployment with bundled Caddy (automatic HTTPS)
+## Production deployment with bundled Caddy (custom TLS certificate)
 
-If you want a one-command deployment with a public domain and a Let's Encrypt certificate, use [`docker/docker-compose-prod-full.yml`](docker/docker-compose-prod-full.yml). It bundles Caddy as a reverse proxy in front of T-800 and handles TLS for you:
+If you want a one-command deployment that terminates HTTPS with your own signed certificate (internal CA, wildcard cert, commercial CA, etc.) rather than Let's Encrypt, use [`docker/docker-compose-prod-full.yml`](docker/docker-compose-prod-full.yml). It bundles Caddy as a reverse proxy in front of T-800 and reads your cert + key from disk:
 
 ```bash
 export DOMAIN=t800.example.com
-export ACME_EMAIL=you@example.com
+mkdir -p ./certs
+# copy your fullchain.pem and privkey.pem into ./certs/
 docker compose -f docker/docker-compose-prod-full.yml up -d
 ```
 
-Requirements: a DNS record pointing at your host, and ports 80/443 reachable from the internet (ACME HTTP-01). If you already run your own reverse proxy in front of this host, use `docker/docker-compose.prod.yml` instead — it skips the bundled proxy and exposes T-800 on a plain HTTP port.
+Requirements: a DNS record pointing at your host, and a cert chain (`fullchain.pem`) and unencrypted private key (`privkey.pem`) in `./certs/`. If you already run your own reverse proxy in front of this host, use `docker/docker-compose.prod.yml` instead — it skips the bundled proxy and exposes T-800 on a plain HTTP port.
 
 # Sponsors
 

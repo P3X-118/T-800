@@ -1,22 +1,25 @@
-# T-800 production stack with bundled Caddy reverse proxy + automatic HTTPS.
+# T-800 production stack with bundled Caddy reverse proxy using a
+# user-supplied TLS certificate (no Let's Encrypt / ACME).
 #
-# For self-hosters who want a single `docker compose up -d` to get T-800
-# running on a public domain with a Let's Encrypt certificate. Caddy
-# handles TLS termination and proxies to the T-800 container on its
-# internal port.
+# For self-hosters who already have a signed certificate (internal CA,
+# wildcard cert, commercial CA, etc.) and want Caddy to serve T-800 on
+# their public domain over HTTPS without issuing its own cert.
 #
 # Requirements:
-#   - A public domain (A/AAAA record) pointing at this host
-#   - Ports 80 and 443 reachable from the internet (ACME HTTP-01)
+#   - A domain (DNS record) pointing at this host
+#   - A certificate chain + private key on disk:
+#       ./certs/fullchain.pem   (cert + any intermediates)
+#       ./certs/privkey.pem     (private key, unencrypted)
 #
 # Usage:
 #   export DOMAIN=t800.example.com
-#   export ACME_EMAIL=you@example.com
+#   mkdir -p ./certs
+#   # copy your fullchain.pem and privkey.pem into ./certs/
 #   docker compose -f docker-compose-prod-full.yml up -d
 #
-# If you already run a reverse proxy (Caddy/nginx/Traefik) in front of
-# this host, use docker-compose.prod.yml instead — it omits the bundled
-# proxy and exposes the app on a plain HTTP port.
+# If you already run a reverse proxy in front of this host, use
+# docker-compose.prod.yml instead — it omits the bundled proxy and
+# exposes the app on a plain HTTP port.
 
 services:
   caddy:
@@ -29,12 +32,11 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: "${DOMAIN:?set DOMAIN to your public hostname}"
-      ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt}"
     configs:
       - source: caddyfile
         target: /etc/caddy/Caddyfile
     volumes:
-      - caddy-data:/data
+      - ./certs:/etc/caddy/certs:ro
       - caddy-config:/config
     depends_on:
       - t800
@@ -68,17 +70,16 @@ configs:
   caddyfile:
     content: |
       {
-        email {env.ACME_EMAIL}
+        auto_https disable_redirects
       }
       {env.DOMAIN} {
+        tls /etc/caddy/certs/fullchain.pem /etc/caddy/certs/privkey.pem
         encode zstd gzip
         reverse_proxy t800:8080
       }
 
 volumes:
   t800-data:
-    driver: local
-  caddy-data:
     driver: local
   caddy-config:
     driver: local
