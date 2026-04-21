@@ -186,12 +186,21 @@ export function FolderCard({
       }`}
     >
       <div
-        className={`px-4 py-3 relative ${isExpanded ? "border-b-2" : ""} bg-header`}
+        className={`px-4 py-3 relative ${isExpanded ? "border-b-2" : ""} bg-header cursor-pointer`}
         onClick={(e) => {
           if ((e.ctrlKey || e.metaKey || e.shiftKey) && onSelect) {
             e.stopPropagation();
             onSelect(e.ctrlKey || e.metaKey ? "ctrl" : "shift");
+            return;
           }
+          // Ignore clicks that originate from interactive children
+          // (chevron button has its own onClick, rename input should
+          // not expand/collapse the folder).
+          const target = e.target as HTMLElement;
+          if (target.closest("button, input, textarea, [contenteditable]")) {
+            return;
+          }
+          toggleExpanded();
         }}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -233,7 +242,7 @@ export function FolderCard({
           onClick={toggleExpanded}
         >
           <ChevronDown
-            className={`h-4 w-4 transition-transform ${isExpanded ? "" : "rotate-180"}`}
+            className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
           />
         </Button>
       </div>

@@ -1002,11 +1002,16 @@ export function SSHToolsSidebar({
   return (
     <>
       {/* Persistent hover-strip along the right edge. Always mounted when
-          the sidebar is persisted-closed so the cursor can enter it to
-          trigger hover-open; invisible while hover-open to avoid painting
-          over the sidebar's right edge. */}
-      {isPersistedClosed && (
+          the sidebar is visibly closed so the cursor can enter it to
+          trigger hover-open (or, while Ctrl-locked closed, double-click
+          to unlock). Invisible while the sidebar is visible, to avoid
+          painting over its right edge. Keyed on the derived `isOpen`
+          rather than `isPersistedClosed` so the strip stays reachable
+          when the Ctrl lock forces the sidebar closed over a
+          persisted-open state. */}
+      {!isOpen && (
         <div
+          onClick={() => onTogglePersisted?.(true)}
           onDoubleClick={() => onTogglePersisted?.(true)}
           onMouseEnter={onHoverEnter}
           onMouseLeave={onHoverLeave}

@@ -67,7 +67,9 @@ const AppContent: FC = () => {
 
     checkAuth();
 
-    const handleStorageChange = () => checkAuth();
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === null || e.key === "jwt") checkAuth();
+    };
     window.addEventListener("storage", handleStorageChange);
 
     return () => window.removeEventListener("storage", handleStorageChange);

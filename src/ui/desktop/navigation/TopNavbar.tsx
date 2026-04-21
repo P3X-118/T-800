@@ -20,9 +20,14 @@ import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 import { useTranslation } from "react-i18next";
 import { TabDropdown } from "@/ui/desktop/navigation/tabs/TabDropdown.tsx";
 import { SessionRoamingMenu } from "@/ui/desktop/navigation/SessionRoamingMenu.tsx";
+import { WorkspaceMenu } from "@/ui/desktop/navigation/WorkspaceMenu.tsx";
 import { SSHToolsSidebar } from "@/ui/desktop/apps/tools/SSHToolsSidebar.tsx";
 import { useCommandHistory } from "@/ui/desktop/apps/features/terminal/command-history/CommandHistoryContext.tsx";
 import { QuickConnectDialog } from "@/ui/desktop/navigation/dialogs/QuickConnectDialog.tsx";
+import {
+  unlockCtrlLock,
+  useCtrlLockMode,
+} from "@/hooks/use-ctrl-lock.ts";
 
 interface TabData {
   id: number;
@@ -107,23 +112,37 @@ export function TopNavbar({
   // opens temporarily, clicking the toggle pins it open.
   const [isToolsPersistedOpen, setIsToolsPersistedOpen] = useState(false);
   const [isToolsHoverOpen, setIsToolsHoverOpen] = useState(false);
-  const toolsSidebarOpen = isToolsPersistedOpen || isToolsHoverOpen;
+  const ctrlLockMode = useCtrlLockMode();
+  const ctrlLocked = ctrlLockMode !== "none";
+  // Effective visibility: Ctrl-lock forces open/closed in either direction;
+  // otherwise fall back to persisted OR transient hover.
+  const toolsSidebarOpen =
+    ctrlLockMode === "open"
+      ? true
+      : ctrlLockMode === "closed"
+        ? false
+        : isToolsPersistedOpen || isToolsHoverOpen;
+  // Manual toggle — also clears the Ctrl lock (the canonical exit path).
   const setToolsSidebarOpen = React.useCallback((open: boolean) => {
+    unlockCtrlLock();
     setIsToolsPersistedOpen(open);
     if (!open) setIsToolsHoverOpen(false);
   }, []);
 
   // Hover-open handling for the closed right tools sidebar — identical
-  // grace-timeout pattern as the topbar hover.
+  // grace-timeout pattern as the topbar hover. Gated off while
+  // Ctrl-locked in either direction.
   const toolsHoverCloseTimeoutRef = React.useRef<number | null>(null);
   const handleToolsHoverEnter = React.useCallback(() => {
+    if (ctrlLocked) return;
     if (toolsHoverCloseTimeoutRef.current != null) {
       window.clearTimeout(toolsHoverCloseTimeoutRef.current);
       toolsHoverCloseTimeoutRef.current = null;
     }
     setIsToolsHoverOpen(true);
-  }, []);
+  }, [ctrlLocked]);
   const handleToolsHoverLeave = React.useCallback(() => {
+    if (ctrlLocked) return;
     if (toolsHoverCloseTimeoutRef.current != null) {
       window.clearTimeout(toolsHoverCloseTimeoutRef.current);
     }
@@ -131,7 +150,7 @@ export function TopNavbar({
       setIsToolsHoverOpen(false);
       toolsHoverCloseTimeoutRef.current = null;
     }, 120);
-  }, []);
+  }, [ctrlLocked]);
   React.useEffect(
     () => () => {
       if (toolsHoverCloseTimeoutRef.current != null) {
@@ -154,6 +173,23 @@ export function TopNavbar({
   const [emptyAreaHostsError, setEmptyAreaHostsError] = useState<string | null>(
     null,
   );
+  const [emptyAreaFilter, setEmptyAreaFilter] = useState("");
+  const emptyAreaFilterInputRef = React.useRef<HTMLInputElement | null>(null);
+  const filteredEmptyAreaHosts = React.useMemo(() => {
+    const q = emptyAreaFilter.trim().toLowerCase();
+    if (!q) return emptyAreaHosts;
+    return emptyAreaHosts.filter((host) => {
+      const label = host.name?.trim()
+        ? host.name
+        : `${host.username}@${host.ip}:${host.port}`;
+      return (
+        label.toLowerCase().includes(q) ||
+        String(host.ip || "").toLowerCase().includes(q) ||
+        String(host.username || "").toLowerCase().includes(q) ||
+        String(host.name || "").toLowerCase().includes(q)
+      );
+    });
+  }, [emptyAreaHosts, emptyAreaFilter]);
 
   React.useEffect(() => {
     if (!emptyAreaContextMenu) return;
@@ -173,6 +209,10 @@ export function TopNavbar({
       setEmptyAreaContextMenu({ x: e.clientX, y: e.clientY });
       setEmptyAreaHostsLoading(true);
       setEmptyAreaHostsError(null);
+      setEmptyAreaFilter("");
+      // Focus the filter input after the menu mounts so typing starts
+      // narrowing the list immediately.
+      setTimeout(() => emptyAreaFilterInputRef.current?.focus(), 0);
       try {
         const { getSSHHosts } = await import("@/ui/main-axios.ts");
         const hosts = await getSSHHosts();
@@ -1365,6 +1405,7 @@ export function TopNavbar({
           )}
 
           <SessionRoamingMenu />
+          <WorkspaceMenu />
 
           <Button
             variant="outline"
@@ -1475,6 +1516,24 @@ export function TopNavbar({
             {t("nav.openHostInNewTab", "Open host in new tab")}
           </div>
           <div className="border-t border-edge" />
+          <div className="px-2 py-1.5 border-b border-edge">
+            <input
+              ref={emptyAreaFilterInputRef}
+              type="text"
+              value={emptyAreaFilter}
+              onChange={(e) => setEmptyAreaFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setEmptyAreaContextMenu(null);
+                } else if (e.key === "Enter") {
+                  const first = filteredEmptyAreaHosts[0];
+                  if (first) handleOpenHostInNewTab(first);
+                }
+              }}
+              placeholder={t("common.filter", "Filter hosts…")}
+              className="w-full text-[13px] px-2 py-1 rounded-sm bg-input border border-edge text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
           {emptyAreaHostsLoading && (
             <div className="px-3 py-2 text-[13px] text-muted-foreground">
               {t("common.loading", "Loading…")}
@@ -1494,7 +1553,15 @@ export function TopNavbar({
             )}
           {!emptyAreaHostsLoading &&
             !emptyAreaHostsError &&
-            emptyAreaHosts.map((host) => {
+            emptyAreaHosts.length > 0 &&
+            filteredEmptyAreaHosts.length === 0 && (
+              <div className="px-3 py-2 text-[13px] text-muted-foreground">
+                {t("common.noMatches", "No matches")}
+              </div>
+            )}
+          {!emptyAreaHostsLoading &&
+            !emptyAreaHostsError &&
+            filteredEmptyAreaHosts.map((host) => {
               const label = host.name?.trim()
                 ? host.name
                 : `${host.username}@${host.ip}:${host.port}`;

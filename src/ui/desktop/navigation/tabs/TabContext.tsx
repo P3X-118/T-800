@@ -22,6 +22,13 @@ import {
   insertAdjacentRowOrColumn as insertAdjacentRowOrColumnOp,
   pruneLayout,
 } from "./splitLayout.js";
+import {
+  tabsKey,
+  currentTabKey,
+  splitLayoutKey,
+  startSessionHeartbeat,
+  listAllSessionStorageKeys,
+} from "./windowId.js";
 
 export type Tab = TabContextTab;
 export type { SplitLayoutNode, DropPosition };
@@ -125,15 +132,25 @@ export function isPersistenceEnabled(): boolean {
 }
 
 export function clearT800SessionStorage() {
+  // Clear pre-windowId global snapshot in case an upgrade left it around.
   localStorage.removeItem("t800_tabs");
   localStorage.removeItem("t800_currentTab");
   localStorage.removeItem("t800_splitLayout");
-  const keysToRemove: string[] = [];
+  const { tabsKeys, currentTabKeys, splitLayoutKeys, heartbeatKeys } =
+    listAllSessionStorageKeys();
+  const keysToRemove: string[] = [
+    ...tabsKeys,
+    ...currentTabKeys,
+    ...splitLayoutKeys,
+    ...heartbeatKeys,
+  ];
+  // t800_session_<hostId>_<instanceId> (per-terminal reconnect tokens)
+  // are separate from the per-session storage above. Keep them in the
+  // same sweep so a logout clear wipes reconnect tokens too.
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key?.startsWith("t800_session_")) {
-      keysToRemove.push(key);
-    }
+    if (!key) continue;
+    if (key.startsWith("t800_session_")) keysToRemove.push(key);
   }
   keysToRemove.forEach((k) => localStorage.removeItem(k));
 }
@@ -148,11 +165,13 @@ export function TabProvider({ children }: TabProviderProps) {
     }
 
     try {
-      const saved = localStorage.getItem("t800_tabs");
-      if (saved) {
-        const parsed = JSON.parse(saved) as Tab[];
+      // getSessionId() either reuses this tab's sessionStorage id or
+      // claims the most-recently-used free session (see windowId.ts).
+      // Either way, tabsKey() points at the authoritative snapshot.
+      const perSession = localStorage.getItem(tabsKey());
+      if (perSession) {
+        const parsed = JSON.parse(perSession) as Tab[];
         const restored: Tab[] = [{ id: 1, type: "home", title: "Home" }];
-        let maxId = 1;
         for (const tab of parsed) {
           if (tab.type === "home") continue;
           const restoredTab: Tab = {
@@ -170,7 +189,6 @@ export function TabProvider({ children }: TabProviderProps) {
               : undefined,
           };
           restored.push(restoredTab);
-          if (tab.id > maxId) maxId = tab.id;
         }
         if (restored.length > 1) return enforcePinOrder(restored);
       }
@@ -181,7 +199,7 @@ export function TabProvider({ children }: TabProviderProps) {
   });
   const [currentTab, setCurrentTab] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem("t800_currentTab");
+      const saved = localStorage.getItem(currentTabKey());
       if (saved) {
         const parsed = parseInt(saved, 10);
         if (parsed && tabs.some((t) => t.id === parsed)) return parsed;
@@ -195,7 +213,7 @@ export function TabProvider({ children }: TabProviderProps) {
     useState<SplitLayoutNode | null>(() => {
       if (!isPersistenceEnabled()) return null;
       try {
-        const saved = localStorage.getItem("t800_splitLayout");
+        const saved = localStorage.getItem(splitLayoutKey());
         if (!saved) return null;
         const parsed = JSON.parse(saved) as SplitLayoutNode;
         // Persisted single-leaf isn't a real split — discard.
@@ -277,25 +295,28 @@ export function TabProvider({ children }: TabProviderProps) {
       const serializable = tabs
         .filter((t) => t.type !== "home")
         .map(({ terminalRef, ...rest }) => rest);
-      localStorage.setItem("t800_tabs", JSON.stringify(serializable));
-      localStorage.setItem("t800_currentTab", String(currentTab));
+      const serialized = JSON.stringify(serializable);
+      localStorage.setItem(tabsKey(), serialized);
+      localStorage.setItem(currentTabKey(), String(currentTab));
     } else {
-      localStorage.removeItem("t800_tabs");
-      localStorage.removeItem("t800_currentTab");
+      localStorage.removeItem(tabsKey());
+      localStorage.removeItem(currentTabKey());
     }
   }, [tabs, currentTab]);
 
   useEffect(() => {
-    if (isPersistenceEnabled()) {
-      if (splitLayout) {
-        localStorage.setItem("t800_splitLayout", JSON.stringify(splitLayout));
-      } else {
-        localStorage.removeItem("t800_splitLayout");
-      }
+    if (isPersistenceEnabled() && splitLayout) {
+      localStorage.setItem(splitLayoutKey(), JSON.stringify(splitLayout));
     } else {
-      localStorage.removeItem("t800_splitLayout");
+      localStorage.removeItem(splitLayoutKey());
     }
   }, [splitLayout]);
+
+  // Heartbeat proves this tab is alive, so sibling tabs (duplicate
+  // tab / window.open with cloned sessionStorage) can see that this
+  // session id is claimed and pick a different one. Also lets fresh
+  // tabs know which sessions are available to auto-resume.
+  useEffect(() => startSessionHeartbeat(), []);
 
   // Prune the restored split layout against the actual tab list (drops
   // references to tabs that no longer exist).
