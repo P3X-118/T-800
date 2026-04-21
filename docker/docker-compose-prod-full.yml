@@ -1,0 +1,88 @@
+# T-800 production stack with bundled Caddy reverse proxy + automatic HTTPS.
+#
+# For self-hosters who want a single `docker compose up -d` to get T-800
+# running on a public domain with a Let's Encrypt certificate. Caddy
+# handles TLS termination and proxies to the T-800 container on its
+# internal port.
+#
+# Requirements:
+#   - A public domain (A/AAAA record) pointing at this host
+#   - Ports 80 and 443 reachable from the internet (ACME HTTP-01)
+#
+# Usage:
+#   export DOMAIN=t800.example.com
+#   export ACME_EMAIL=you@example.com
+#   docker compose -f docker-compose-prod-full.yml up -d
+#
+# If you already run a reverse proxy (Caddy/nginx/Traefik) in front of
+# this host, use docker-compose.prod.yml instead — it omits the bundled
+# proxy and exposes the app on a plain HTTP port.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: t800-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: "${DOMAIN:?set DOMAIN to your public hostname}"
+      ACME_EMAIL: "${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt}"
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - t800
+    networks:
+      - t800-net
+
+  t800:
+    image: legitservices/t-800:latest
+    container_name: t800
+    restart: unless-stopped
+    volumes:
+      - t800-data:/app/data
+    environment:
+      PORT: "8080"
+      ENABLE_SSL: "false"
+      DATA_DIR: "/app/data"
+      NODE_ENV: "production"
+    depends_on:
+      - guacd
+    networks:
+      - t800-net
+
+  guacd:
+    image: guacamole/guacd:latest
+    container_name: t800-guacd
+    restart: unless-stopped
+    networks:
+      - t800-net
+
+configs:
+  caddyfile:
+    content: |
+      {
+        email {env.ACME_EMAIL}
+      }
+      {env.DOMAIN} {
+        encode zstd gzip
+        reverse_proxy t800:8080
+      }
+
+volumes:
+  t800-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
+networks:
+  t800-net:
+    driver: bridge
