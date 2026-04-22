@@ -22,6 +22,8 @@ import { sessionManager } from "./terminal-session-manager.js";
 interface ConnectToHostData {
   cols: number;
   rows: number;
+  pixelWidth?: number;
+  pixelHeight?: number;
   hostConfig: {
     id: number;
     instanceId?: string;
@@ -56,6 +58,12 @@ interface ConnectToHostData {
 interface ResizeData {
   cols: number;
   rows: number;
+  // Pixel dimensions of the terminal element. Populated so the PTY's
+  // winsize reports ws_xpixel/ws_ypixel, which chafa reads directly
+  // via TIOCGWINSZ instead of firing a CSI 14 t query that would
+  // round-trip too slowly.
+  pixelWidth?: number;
+  pixelHeight?: number;
 }
 
 interface TOTPResponseData {
@@ -532,6 +540,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
           sessionId: string;
           cols: number;
           rows: number;
+          pixelWidth?: number;
+          pixelHeight?: number;
           tabInstanceId?: string;
         };
         sshLogger.info("Attempting to attach session", {
@@ -574,8 +584,8 @@ wss.on("connection", async (ws: WebSocket, req) => {
             session.sshStream?.setWindow(
               attachData.rows,
               attachData.cols,
-              attachData.rows,
-              attachData.cols,
+              attachData.pixelHeight ?? 0,
+              attachData.pixelWidth ?? 0,
             );
             session.cols = attachData.cols;
             session.rows = attachData.rows;
@@ -1288,6 +1298,14 @@ wss.on("connection", async (ws: WebSocket, req) => {
         {
           rows: data.rows,
           cols: data.cols,
+          // Populate pixel dims on the PTY's winsize so programs like
+          // chafa that read TIOCGWINSZ get real ws_xpixel/ws_ypixel
+          // and don't need to fall back to a CSI 14 t round-trip. If
+          // the client didn't send pixel dims, pass 0 (SSH "unknown"
+          // sentinel) — NOT char rows/cols, which would give chafa an
+          // absurd 24×80-pixel winsize and break sixel scaling.
+          height: data.pixelHeight ?? 0,
+          width: data.pixelWidth ?? 0,
           term: "xterm-256color",
         } as PseudoTtyOptions,
         (err, stream) => {
@@ -2256,7 +2274,18 @@ wss.on("connection", async (ws: WebSocket, req) => {
     const resizeStream =
       sessionManager.getSession(currentSessionId)?.sshStream ?? sshStream;
     if (resizeStream && resizeStream.setWindow) {
-      resizeStream.setWindow(data.rows, data.cols, data.rows, data.cols);
+      // ssh2's setWindow signature is (rows, cols, height, width) — the
+      // height/width are PIXELS and end up in the PTY's winsize as
+      // ws_ypixel/ws_xpixel. Previously we passed rows/cols here too,
+      // which set the pixel dims to char counts and broke chafa's
+      // TIOCGWINSZ-based sizing.
+      // When the client doesn't supply pixel dims, pass 0 (the SSH
+      // "unknown" sentinel) instead of rows/cols. Setting pixel dims
+      // to char counts gives chafa absurd 24×80-pixel winsize values
+      // via TIOCGWINSZ and makes it render sixel at the wrong scale.
+      const heightPx = data.pixelHeight ?? 0;
+      const widthPx = data.pixelWidth ?? 0;
+      resizeStream.setWindow(data.rows, data.cols, heightPx, widthPx);
       const session = sessionManager.getSession(currentSessionId);
       if (session) {
         session.cols = data.cols;

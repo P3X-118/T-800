@@ -97,6 +97,7 @@ export function CommandPalette({
     [],
   );
   const [hosts, setHosts] = useState<SSHHost[]>([]);
+  const [searchValue, setSearchValue] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -107,6 +108,8 @@ export function CommandPalette({
       getSSHHosts().then((allHosts) => {
         setHosts(allHosts);
       });
+    } else {
+      setSearchValue("");
     }
   }, [isOpen]);
 
@@ -344,6 +347,8 @@ export function CommandPalette({
       >
         <CommandInput
           ref={inputRef}
+          value={searchValue}
+          onValueChange={setSearchValue}
           placeholder={t("commandPalette.searchPlaceholder")}
         />
         <CommandList

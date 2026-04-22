@@ -211,7 +211,7 @@ class AuthManager {
       if (options.rememberMe) {
         expiresIn = "30d";
       } else {
-        expiresIn = "24h";
+        expiresIn = "30d";
       }
     } else if (!expiresIn) {
       expiresIn = "24h";

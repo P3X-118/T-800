@@ -63,6 +63,16 @@ export default defineConfig({
     port: 5175,
     host: "0.0.0.0",
     allowedHosts: true,
+    // Runtime data dirs (SQLite DB, opkssh state, .env) live under the
+    // project root in dev. Without this, every SSH session write to the
+    // encrypted DB triggers a full page reload, which kills the terminal
+    // WebSocket and causes an endless reconnect/reload loop.
+    watch: {
+      ignored: [
+        path.resolve(__dirname, "data/**"),
+        path.resolve(__dirname, "db/**"),
+      ],
+    },
     // HMR host defaults to the mesh IP for local dev on the dev host.
     // When served behind Caddy (e.g. t1000.d.sgc.ai), the container
     // sets VITE_HMR_HOST / VITE_HMR_CLIENT_PORT / VITE_HMR_PROTOCOL so

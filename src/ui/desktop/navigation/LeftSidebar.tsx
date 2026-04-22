@@ -365,6 +365,14 @@ export function LeftSidebar({
     return () => clearTimeout(handler);
   }, [search]);
 
+  // Host rows dispatch this when the user opens a session so the search
+  // input clears and the sidebar returns to its pre-search state.
+  React.useEffect(() => {
+    const clear = () => setSearch("");
+    window.addEventListener("sidebar:search-clear", clear);
+    return () => window.removeEventListener("sidebar:search-clear", clear);
+  }, []);
+
   React.useEffect(() => {
     localStorage.setItem(
       "leftSidebarOpen",
@@ -994,6 +1002,19 @@ export function LeftSidebar({
                     <Input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && filteredHosts.length === 1) {
+                          e.preventDefault();
+                          const host = filteredHosts[0];
+                          const id = addTab({
+                            type: "terminal",
+                            title: host.name || host.ip,
+                            hostConfig: host,
+                          });
+                          if (id > 0) setCurrentTab(id);
+                          setSearch("");
+                        }
+                      }}
                       placeholder={t("placeholders.searchHostsAny")}
                       className="w-full h-8 text-sm border-2 !bg-field border-edge rounded-md"
                       autoComplete="off"
@@ -1048,6 +1069,7 @@ export function LeftSidebar({
                       folderIcon={metadata?.icon}
                       disableRename={folder === t("leftSidebar.noFolder")}
                       forceExpandedKey={folderExpandKey}
+                      searchActive={debouncedSearch.trim().length > 0}
                       isSelected={selectedFolders.has(folder)}
                       onSelect={(mode) =>
                         handleFolderSelect(folder, mode)

@@ -19,6 +19,7 @@ import {
   Key,
   Pencil,
   Columns2,
+  Copy,
 } from "lucide-react";
 import type { SSHHost } from "@/types";
 
@@ -45,6 +46,7 @@ interface TabProps {
   onRename?: (newTitle: string) => void;
   onAddToSplit?: () => void;
   onSplitAll?: () => void;
+  onDuplicate?: () => void;
 }
 
 export function Tab({
@@ -70,6 +72,7 @@ export function Tab({
   onRename,
   onAddToSplit,
   onSplitAll,
+  onDuplicate,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{
@@ -398,6 +401,18 @@ export function Tab({
             <Pencil className="w-3.5 h-3.5" />
             Rename
           </button>
+          {onDuplicate && (
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                onDuplicate();
+                setContextMenu(null);
+              }}
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Duplicate
+            </button>
+          )}
           {onAddToSplit && (
             <button
               className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"

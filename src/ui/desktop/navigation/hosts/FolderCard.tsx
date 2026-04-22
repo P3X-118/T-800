@@ -64,6 +64,7 @@ interface FolderCardProps {
   onFolderRenamed?: () => void;
   disableRename?: boolean;
   forceExpandedKey?: number;
+  searchActive?: boolean;
   isSelected?: boolean;
   onSelect?: (mode: "ctrl" | "shift") => void;
   onDeleteFolder?: () => void;
@@ -80,6 +81,7 @@ export function FolderCard({
   onFolderRenamed,
   disableRename = false,
   forceExpandedKey,
+  searchActive = false,
   isSelected = false,
   onSelect,
   onDeleteFolder,
@@ -93,6 +95,25 @@ export function FolderCard({
     if (forceExpandedKey === undefined) return;
     setIsExpanded(forceExpandedKey > 0);
   }, [forceExpandedKey]);
+
+  // While a host search is active, force every rendered folder open so
+  // matches are visible; restore the prior expansion state when the
+  // search clears.
+  const preSearchExpandedRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (searchActive) {
+      if (preSearchExpandedRef.current === null) {
+        preSearchExpandedRef.current = isExpanded;
+      }
+      setIsExpanded(true);
+    } else if (preSearchExpandedRef.current !== null) {
+      setIsExpanded(preSearchExpandedRef.current);
+      preSearchExpandedRef.current = null;
+    }
+    // isExpanded intentionally not a dep — we only snapshot on the
+    // false→true edge of searchActive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchActive]);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;

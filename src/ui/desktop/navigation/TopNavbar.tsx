@@ -1213,6 +1213,28 @@ export function TopNavbar({
                         }
                       : undefined
                   }
+                  onDuplicate={
+                    isTerminal
+                      ? () => {
+                          const newTabId = addTabAfter(tab.id, {
+                            type: "terminal",
+                            title: tab.title,
+                            hostConfig: tab.hostConfig,
+                          });
+                          if (newTabId <= 0) return;
+                          // Fold the original and its duplicate into a split
+                          // view. If the original is already in a split, add
+                          // the duplicate alongside the existing group.
+                          const existing = allSplitScreenTab.includes(tab.id)
+                            ? allSplitScreenTab
+                            : [tab.id];
+                          const merged = [...existing, newTabId].slice(0, 12);
+                          if (merged.length >= 2) {
+                            setSplitScreenTabs(merged);
+                          }
+                        }
+                      : undefined
+                  }
                 />
               </div>,
             );

@@ -13,7 +13,11 @@ import {
   Pencil,
   ArrowDownUp,
   Container,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirmation } from "@/hooks/use-confirmation.ts";
+import { deleteSSHHost, refreshServerPolling } from "@/ui/main-axios.ts";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -29,7 +33,8 @@ import { useHostStatus } from "@/ui/contexts/ServerStatusContext";
 import { cn } from "@/lib/utils.ts";
 
 export function Host({ host: initialHost }: HostProps): React.ReactElement {
-  const { addTab } = useTabs();
+  const { addTab, removeTab, tabs: tabList } = useTabs();
+  const { confirmWithToast } = useConfirmation();
   const [host, setHost] = useState(initialHost);
   const { t } = useTranslation();
   const [showTags, setShowTags] = useState<boolean>(() => {
@@ -146,6 +151,7 @@ export function Host({ host: initialHost }: HostProps): React.ReactElement {
             "ignore-cert": host.ignoreCert,
           },
         });
+        window.dispatchEvent(new CustomEvent("sidebar:search-clear"));
 
         try {
           await logActivity(protocol, host.id, title);
@@ -158,6 +164,32 @@ export function Host({ host: initialHost }: HostProps): React.ReactElement {
       return;
     }
     addTab({ type: "terminal", title, hostConfig: host });
+    window.dispatchEvent(new CustomEvent("sidebar:search-clear"));
+  };
+
+  const handleDeleteHost = () => {
+    confirmWithToast(
+      t("hosts.confirmDelete", { name: title }),
+      async () => {
+        try {
+          await deleteSSHHost(host.id);
+          // Close any open tabs referencing this host and clear their
+          // persisted session IDs so nothing reconnects to the dead host.
+          const stale = tabList.filter((tab) => tab.hostConfig?.id === host.id);
+          for (const tab of stale) {
+            removeTab(tab.id);
+            const tabKey = `${host.id}_${(tab as Record<string, unknown>).instanceId || ""}`;
+            localStorage.removeItem(`t800_session_${tabKey}`);
+          }
+          toast.success(t("hosts.hostDeletedSuccessfully", { name: title }));
+          window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          refreshServerPolling();
+        } catch {
+          toast.error(t("hosts.failedToDeleteHost"));
+        }
+      },
+      "destructive",
+    );
   };
 
   const isSSH = !host.connectionType || host.connectionType === "ssh";
@@ -366,6 +398,15 @@ export function Host({ host: initialHost }: HostProps): React.ReactElement {
               >
                 <Pencil className="h-4 w-4" />
                 <span className="flex-1">{t("common.edit")}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleDeleteHost}
+                className="flex items-center gap-2 cursor-pointer px-3 py-2 hover:bg-hover text-red-500 focus:text-red-500"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="flex-1">
+                  {t("hosts.deleteHost", { defaultValue: "Delete Host" })}
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
