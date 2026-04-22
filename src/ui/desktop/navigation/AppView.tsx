@@ -181,10 +181,7 @@ export function AppView({
     allSplitScreenTab: number[];
     splitLayout: SplitLayoutNode | null;
     removeTab: (id: number) => void;
-    updateTab: (
-      tabId: number,
-      updates: Partial<Omit<TabData, "id">>,
-    ) => void;
+    updateTab: (tabId: number, updates: Partial<Omit<TabData, "id">>) => void;
     addTab: (tab: {
       type: string;
       title?: string;
@@ -257,68 +254,10 @@ export function AppView({
   // Refs for the native document-level dragstart handler below — it
   // needs current `tabs` / `allSplitScreenTab` without being
   // re-installed on every render.
-  const tabsRef = useRef<TabData[]>([]);
-  const allSplitScreenTabRef = useRef<number[]>([]);
-  useEffect(() => {
-    tabsRef.current = tabs;
-    allSplitScreenTabRef.current = allSplitScreenTab;
-  });
-
-  // React 19's synthetic `onDragStart` delegation drops the event for
-  // panel title bars inside ResizablePanel — mousedown and the native
-  // dragstart both reach the element, but React never dispatches the
-  // synthetic handler, so top-row panels' title-bar drags silently
-  // fail. We install a document-level capture listener that reads the
-  // tab id from a `data-panel-titlebar-tab-id` attribute and runs the
-  // work the React handler would have. Dragend is handled the same
-  // way so panelDrag always clears.
-  useEffect(() => {
-    const onDragStart = (e: DragEvent) => {
-      const target = e.target as HTMLElement | null;
-      const tabIdAttr = target?.getAttribute?.(
-        "data-panel-titlebar-tab-id",
-      );
-      if (!tabIdAttr) return;
-      if (allSplitScreenTabRef.current.length <= 1) return;
-      const tabId = Number(tabIdAttr);
-      const tab = tabsRef.current.find((t) => t.id === tabId);
-      if (!tab) return;
-
-      const dragEl = document.createElement("div");
-      dragEl.textContent = tab.title || String(tabId);
-      dragEl.style.cssText =
-        "position:fixed;top:-1000px;left:-1000px;padding:6px 16px;background:var(--color-surface,#1e1e2e);color:var(--color-foreground,#cdd6f4);border:2px solid #89b4fa;border-radius:6px;font-size:13px;white-space:nowrap;z-index:99999;opacity:0.9;";
-      document.body.appendChild(dragEl);
-      if (e.dataTransfer) {
-        e.dataTransfer.setDragImage(
-          dragEl,
-          dragEl.offsetWidth / 2,
-          dragEl.offsetHeight / 2,
-        );
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(tabId));
-      }
-      setTimeout(() => {
-        if (dragEl.parentNode) dragEl.parentNode.removeChild(dragEl);
-      }, 0);
-      setPanelDrag({ sourceTabId: tabId, hoverTabId: null });
-    };
-    const onDragEnd = (e: DragEvent) => {
-      const target = e.target as HTMLElement | null;
-      const tabIdAttr = target?.getAttribute?.(
-        "data-panel-titlebar-tab-id",
-      );
-      if (!tabIdAttr) return;
-      setPanelDrag(null);
-      setOuterDropEdge(null);
-    };
-    document.addEventListener("dragstart", onDragStart, true);
-    document.addEventListener("dragend", onDragEnd, true);
-    return () => {
-      document.removeEventListener("dragstart", onDragStart, true);
-      document.removeEventListener("dragend", onDragEnd, true);
-    };
-  }, []);
+  // Titlebar drag for panel snapping is handled inline via React props
+  // on the titlebar element in renderPanelTitlebarsLayer — no
+  // document-level shim needed now that the titlebar lives in a
+  // pointer-events:auto layer (see renderPanelTitlebarsLayer).
 
   const [panelContextMenu, setPanelContextMenu] = useState<{
     tabId: number;
@@ -346,6 +285,94 @@ export function AppView({
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, [focusedTabId]);
+
+  // Alt+H/J/K/L — vim-style directional pane navigation inside a split
+  // view. User-specified mapping: h=left, j=up, k=down, l=right.
+  // Geometry-based (panel bounding rects) so it handles arbitrarily
+  // nested splits correctly. Alt (not Ctrl) so xterm.js doesn't swallow
+  // the keystroke inside the focused terminal.
+  useEffect(() => {
+    const handleVimNav = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey || e.repeat) {
+        return;
+      }
+      const key = e.key;
+      if (key !== "h" && key !== "j" && key !== "k" && key !== "l") return;
+
+      const leafIds = getLeafIds(splitLayout);
+      if (leafIds.length < 2 || currentTab == null) return;
+      if (!leafIds.includes(currentTab)) return;
+
+      const activeEl = panelRefs.current[String(currentTab)];
+      if (!activeEl) return;
+      const active = activeEl.getBoundingClientRect();
+
+      const dir: "left" | "right" | "up" | "down" =
+        key === "h"
+          ? "left"
+          : key === "l"
+            ? "right"
+            : key === "j"
+              ? "up"
+              : "down";
+
+      let bestId: number | null = null;
+      let bestDist = Infinity;
+      const EPS = 2;
+
+      for (const id of leafIds) {
+        if (id === currentTab) continue;
+        const el = panelRefs.current[String(id)];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        let primary: number;
+        let overlaps: boolean;
+        if (dir === "left") {
+          if (r.right > active.left - EPS) continue;
+          primary = active.left - r.right;
+          overlaps = r.bottom > active.top + EPS && r.top < active.bottom - EPS;
+        } else if (dir === "right") {
+          if (r.left < active.right + EPS) continue;
+          primary = r.left - active.right;
+          overlaps = r.bottom > active.top + EPS && r.top < active.bottom - EPS;
+        } else if (dir === "up") {
+          if (r.bottom > active.top - EPS) continue;
+          primary = active.top - r.bottom;
+          overlaps = r.right > active.left + EPS && r.left < active.right - EPS;
+        } else {
+          if (r.top < active.bottom + EPS) continue;
+          primary = r.top - active.bottom;
+          overlaps = r.right > active.left + EPS && r.left < active.right - EPS;
+        }
+        if (!overlaps) continue;
+        // Tie-break by center-axis offset so neighbors sharing an edge
+        // pick the one most aligned with the active pane.
+        const activeCenter =
+          dir === "left" || dir === "right"
+            ? (active.top + active.bottom) / 2
+            : (active.left + active.right) / 2;
+        const rCenter =
+          dir === "left" || dir === "right"
+            ? (r.top + r.bottom) / 2
+            : (r.left + r.right) / 2;
+        const dist = primary + 0.01 * Math.abs(rCenter - activeCenter);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = id;
+        }
+      }
+      if (bestId != null) {
+        e.preventDefault();
+        e.stopPropagation();
+        setCurrentTab(bestId);
+      }
+    };
+    window.addEventListener("keydown", handleVimNav, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handleVimNav, {
+        capture: true,
+      } as EventListenerOptions);
+  }, [splitLayout, currentTab, setCurrentTab]);
 
   useEffect(() => {
     if (panelEditingTabId !== null && panelEditInputRef.current) {
@@ -570,6 +597,150 @@ export function AppView({
   const [outerDropEdge, setOuterDropEdge] = useState<
     "top" | "right" | "bottom" | "left" | null
   >(null);
+
+  // Manual mouse-based drag for panel titlebars. Titlebar onMouseDown
+  // sets panelDrag; this effect installs window mousemove/mouseup that
+  // hit-test against panelRects + container edges and execute the
+  // drop. Hit-priority matches the visual z-order users expect:
+  // container outer edges (Max Row / Max Column) > per-panel inner
+  // directional zones > panel-body swap.
+  const panelDragTargetRef = useRef<{
+    kind: "outer" | "inner" | "swap" | null;
+    outerEdge?: "top" | "right" | "bottom" | "left";
+    innerTabId?: number;
+    innerPos?: DropPosition;
+    swapTabId?: number;
+  }>({ kind: null });
+  useEffect(() => {
+    if (!panelDrag) {
+      panelDragTargetRef.current = { kind: null };
+      return;
+    }
+    const sourceTabId = panelDrag.sourceTabId;
+    const OUTER_THICKNESS = 56;
+    const SPLIT_OUTER = 0.25;
+
+    const handleMove = (e: MouseEvent) => {
+      const cr = containerRef.current?.getBoundingClientRect();
+      if (!cr) return;
+      const x = e.clientX;
+      const y = e.clientY;
+
+      // Outside the container — clear any target.
+      if (x < cr.left || x > cr.right || y < cr.top || y > cr.bottom) {
+        setOuterDropEdge(null);
+        setExternalDropTarget(null);
+        setPanelDrag((p) => (p ? { ...p, hoverTabId: null } : p));
+        panelDragTargetRef.current = { kind: null };
+        return;
+      }
+
+      const localX = x - cr.left;
+      const localY = y - cr.top;
+
+      // Outer container edges first (user preference: outer on top).
+      let outerEdge: "top" | "right" | "bottom" | "left" | null = null;
+      if (localY <= OUTER_THICKNESS) outerEdge = "top";
+      else if (localY >= cr.height - OUTER_THICKNESS) outerEdge = "bottom";
+      else if (localX <= OUTER_THICKNESS) outerEdge = "left";
+      else if (localX >= cr.width - OUTER_THICKNESS) outerEdge = "right";
+
+      if (outerEdge) {
+        setOuterDropEdge(outerEdge);
+        setExternalDropTarget(null);
+        setPanelDrag((p) => (p ? { ...p, hoverTabId: null } : p));
+        panelDragTargetRef.current = { kind: "outer", outerEdge };
+        return;
+      }
+
+      // Locate which panel the pointer is over (excluding source).
+      let hoveredTabId: number | null = null;
+      let hoveredRect: DOMRect | null = null;
+      for (const tid of allSplitScreenTab) {
+        if (tid === sourceTabId) continue;
+        const r = panelRects[String(tid)];
+        if (!r) continue;
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          hoveredTabId = tid;
+          hoveredRect = r;
+          break;
+        }
+      }
+
+      if (hoveredTabId === null || !hoveredRect) {
+        setOuterDropEdge(null);
+        setExternalDropTarget(null);
+        setPanelDrag((p) => (p ? { ...p, hoverTabId: null } : p));
+        panelDragTargetRef.current = { kind: null };
+        return;
+      }
+
+      const px = x - hoveredRect.left;
+      const py = y - hoveredRect.top;
+      const edgeH = hoveredRect.height * SPLIT_OUTER;
+      const edgeW = hoveredRect.width * SPLIT_OUTER;
+
+      let innerPos: DropPosition | null = null;
+      if (py <= edgeH) innerPos = "top";
+      else if (py >= hoveredRect.height - edgeH) innerPos = "bottom";
+      else if (px <= edgeW) innerPos = "left";
+      else if (px >= hoveredRect.width - edgeW) innerPos = "right";
+
+      if (innerPos) {
+        setExternalDropTarget({ tabId: hoveredTabId, position: innerPos });
+        setOuterDropEdge(null);
+        setPanelDrag((p) => (p ? { ...p, hoverTabId: null } : p));
+        panelDragTargetRef.current = {
+          kind: "inner",
+          innerTabId: hoveredTabId,
+          innerPos,
+        };
+        return;
+      }
+
+      // Center of the panel — swap target.
+      setPanelDrag((p) => (p ? { ...p, hoverTabId: hoveredTabId } : p));
+      setOuterDropEdge(null);
+      setExternalDropTarget(null);
+      panelDragTargetRef.current = { kind: "swap", swapTabId: hoveredTabId };
+    };
+
+    const handleUp = () => {
+      const target = panelDragTargetRef.current;
+      if (target.kind === "outer" && target.outerEdge) {
+        addToSplitRoot(sourceTabId, target.outerEdge);
+      } else if (
+        target.kind === "inner" &&
+        target.innerTabId !== undefined &&
+        target.innerPos
+      ) {
+        executeDragSplit(sourceTabId, {
+          tabId: target.innerTabId,
+          position: target.innerPos,
+        });
+      } else if (target.kind === "swap" && target.swapTabId !== undefined) {
+        swapInSplitLayout(sourceTabId, target.swapTabId);
+      }
+      setPanelDrag(null);
+      setOuterDropEdge(null);
+      setExternalDropTarget(null);
+      panelDragTargetRef.current = { kind: null };
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [
+    panelDrag,
+    allSplitScreenTab,
+    panelRects,
+    addToSplitRoot,
+    executeDragSplit,
+    swapInSplitLayout,
+  ]);
 
   const [resetKey, setResetKey] = useState<number>(0);
   const previousStylesRef = useRef<Record<number, React.CSSProperties>>({});
@@ -915,7 +1086,9 @@ export function AppView({
     const sortedTerminalTabs = [...terminalTabs].sort((a, b) => a.id - b.id);
 
     return (
-      <div className={`absolute inset-0 ${focusedTabId !== null ? "z-[10]" : "z-[1]"}`}>
+      <div
+        className={`absolute inset-0 ${focusedTabId !== null ? "z-[10]" : "z-[1]"}`}
+      >
         {sortedTerminalTabs.map((t: TabData) => {
           const hasStyle = !!styles[t.id];
           const isFocused = focusedTabId === t.id;
@@ -978,14 +1151,14 @@ export function AppView({
                     overflow: "hidden",
                     transition: animTransition,
                   }
-                : {
+                : ({
                     ...(previousStyle || standardStyle),
                     opacity: 0,
                     pointerEvents: "none",
                     zIndex: 0,
                     display: "none",
                     overflow: "hidden",
-                  } as React.CSSProperties;
+                  } as React.CSSProperties);
           } else if (hasStyle) {
             finalStyle = {
               ...styles[t.id],
@@ -1137,7 +1310,9 @@ export function AppView({
     <Button
       type="button"
       variant="ghost"
+      draggable={false}
       onClick={onClick}
+      onMouseDown={(e) => e.stopPropagation()}
       aria-label="Reset split sizes"
       className="absolute top-0 right-0 h-[28px] w-[28px] !rounded-none border-l-1 border-b-1 border-edge-panel bg-surface hover:bg-surface-hover text-foreground flex items-center justify-center p-0"
     >
@@ -1148,6 +1323,120 @@ export function AppView({
   const handleReset = () => {
     setResetKey((k) => k + 1);
     requestAnimationFrame(() => scheduleMeasureAndFit());
+  };
+
+  // Titlebars for each split panel. Rendered as independent
+  // absolute-positioned children of the container — NOT wrapped in any
+  // outer div. The HTML5 drag API was silently failing for these
+  // titlebars (multiple suspect interactions with the nested overlay
+  // structure / react-resizable-panels), so we use plain mousedown-
+  // based drag tracking: onMouseDown sets panelDrag, then a window
+  // mousemove/mouseup effect hit-tests zones and executes the drop.
+  const renderPanelTitlebars = (): React.ReactNode => {
+    if (!splitLayout || allSplitScreenTab.length === 0) return null;
+    if (splitLayout.type === "leaf") return null;
+    if (currentTab !== null && !allSplitScreenTab.includes(currentTab)) {
+      return null;
+    }
+    const parentRect = containerRef.current?.getBoundingClientRect();
+    if (!parentRect) return null;
+    const firstLeafId = allSplitScreenTab[0];
+    const canDrag = allSplitScreenTab.length > 1;
+
+    return allSplitScreenTab.map((tabId) => {
+      const tab = terminalTabs.find((t: TabData) => t.id === tabId);
+      const rect = panelRects[String(tabId)];
+      if (!tab || !rect) return null;
+      const isFirst = tabId === firstLeafId;
+      return (
+        <div
+          key={`titlebar-${tabId}`}
+          className={`absolute bg-surface text-foreground text-[13px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] select-none flex items-center ${
+            canDrag ? "cursor-grab active:cursor-grabbing" : ""
+          }`}
+          style={{
+            top: rect.top - parentRect.top,
+            left: rect.left - parentRect.left,
+            width: rect.width,
+            height: 28,
+            zIndex: 30,
+          }}
+          data-panel-titlebar-tab-id={tab.id}
+          onMouseDown={(e) => {
+            if (!canDrag) return;
+            if (e.button !== 0) return;
+            // The mouseup handler on the same element fires the rename
+            // path via panelEditingTabId; don't interfere with that.
+            if (panelEditingTabId === tab.id) return;
+            e.preventDefault();
+            setPanelDrag({ sourceTabId: tab.id, hoverTabId: null });
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setPanelContextMenu({
+              tabId: tab.id,
+              x: e.clientX,
+              y: e.clientY,
+            });
+          }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setFocusedTabId(focusedTabId === tab.id ? null : tab.id);
+          }}
+        >
+          {panelEditingTabId === tab.id ? (
+            <input
+              ref={panelEditInputRef}
+              className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-[13px] h-[22px] leading-[22px] w-[200px] tracking-[1px]"
+              value={panelEditValue}
+              onChange={(e) => setPanelEditValue(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  const trimmed = panelEditValue.trim();
+                  if (trimmed) updateTab(tab.id, { title: trimmed });
+                  setPanelEditingTabId(null);
+                } else if (e.key === "Escape") {
+                  setPanelEditingTabId(null);
+                }
+              }}
+              onBlur={() => {
+                const trimmed = panelEditValue.trim();
+                if (trimmed) updateTab(tab.id, { title: trimmed });
+                setPanelEditingTabId(null);
+              }}
+            />
+          ) : (
+            <span className="truncate flex-1">{tab.title}</span>
+          )}
+          <div className="absolute right-0 top-0 flex items-center h-[28px]">
+            <button
+              draggable={false}
+              className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setFocusedTabId(focusedTabId === tab.id ? null : tab.id);
+              }}
+              title={
+                focusedTabId === tab.id
+                  ? "Restore split view"
+                  : "Maximize terminal"
+              }
+            >
+              {focusedTabId === tab.id ? (
+                <Minimize2 className="h-3 w-3" />
+              ) : (
+                <Maximize2 className="h-3 w-3" />
+              )}
+            </button>
+            {isFirst && <ResetButton onClick={handleReset} />}
+          </div>
+        </div>
+      );
+    });
   };
 
   const renderSplitOverlays = () => {
@@ -1193,6 +1482,11 @@ export function AppView({
       if (node.type === "leaf") {
         const tab = terminalTabs.find((t: TabData) => t.id === node.tabId);
         if (!tab) return null;
+        // The titlebar lives in renderPanelTitlebarsLayer (a sibling
+        // layer with a clean pointer-events:auto ancestor chain) so
+        // native HTML5 drag actually initiates. This ResizablePanel
+        // only provides sizing for react-resizable-panels; its inner
+        // div is a ref target for geometry measurement.
         return (
           <ResizablePanel
             key={`panel-${tab.id}`}
@@ -1206,83 +1500,8 @@ export function AppView({
               ref={(el) => {
                 panelRefs.current[String(tab.id)] = el;
               }}
-              className="h-full w-full flex flex-col relative z-[25]"
-            >
-              <div
-                className={`bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] m-0 pointer-events-auto z-[31] relative select-none ${
-                  allSplitScreenTab.length > 1 ? "cursor-grab active:cursor-grabbing" : ""
-                }`}
-                draggable={allSplitScreenTab.length > 1}
-                data-panel-titlebar-tab-id={tab.id}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setPanelContextMenu({
-                    tabId: tab.id,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setFocusedTabId(
-                    focusedTabId === tab.id ? null : tab.id,
-                  );
-                }}
-              >
-                {panelEditingTabId === tab.id ? (
-                  <input
-                    ref={panelEditInputRef}
-                    className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-[13px] h-[22px] leading-[22px] w-[200px] tracking-[1px]"
-                    value={panelEditValue}
-                    onChange={(e) => setPanelEditValue(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter") {
-                        const trimmed = panelEditValue.trim();
-                        if (trimmed) updateTab(tab.id, { title: trimmed });
-                        setPanelEditingTabId(null);
-                      } else if (e.key === "Escape") {
-                        setPanelEditingTabId(null);
-                      }
-                    }}
-                    onBlur={() => {
-                      const trimmed = panelEditValue.trim();
-                      if (trimmed) updateTab(tab.id, { title: trimmed });
-                      setPanelEditingTabId(null);
-                    }}
-                  />
-                ) : (
-                  <span className="truncate flex-1">{tab.title}</span>
-                )}
-                <div className="absolute right-0 top-0 flex items-center h-[28px]">
-                  <button
-                    className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFocusedTabId(
-                        focusedTabId === tab.id ? null : tab.id,
-                      );
-                    }}
-                    title={
-                      focusedTabId === tab.id
-                        ? "Restore split view"
-                        : "Maximize terminal"
-                    }
-                  >
-                    {focusedTabId === tab.id ? (
-                      <Minimize2 className="h-3 w-3" />
-                    ) : (
-                      <Maximize2 className="h-3 w-3" />
-                    )}
-                  </button>
-                  {tab.id === firstLeafId && (
-                    <ResetButton onClick={handleReset} />
-                  )}
-                </div>
-              </div>
-            </div>
+              className="h-full w-full"
+            />
           </ResizablePanel>
         );
       }
@@ -1419,134 +1638,225 @@ export function AppView({
       }}
     >
       {renderTerminalsLayer()}
-      <div className="relative z-[2]" style={{ height: "100%", pointerEvents: "none" }}>
+      <div
+        className="relative z-[2]"
+        style={{ height: "100%", pointerEvents: "none" }}
+      >
         {renderSplitOverlays()}
       </div>
+      {renderPanelTitlebars()}
 
       {/* Title bar for the focused/zoomed terminal */}
-      {focusedTabId !== null && (() => {
-        const focusedTab = terminalTabs.find(
-          (t: TabData) => t.id === focusedTabId,
-        );
-        if (!focusedTab) return null;
-        return (
-          <div
-            className="absolute top-0 left-0 right-0 z-[15] bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] flex items-center justify-between select-none animate-in fade-in duration-200"
-            onDoubleClick={() => setFocusedTabId(null)}
-          >
-            <span className="truncate flex-1">{focusedTab.title}</span>
-            <button
-              className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
-              onClick={() => setFocusedTabId(null)}
-              title="Restore split view (Esc)"
+      {focusedTabId !== null &&
+        (() => {
+          const focusedTab = terminalTabs.find(
+            (t: TabData) => t.id === focusedTabId,
+          );
+          if (!focusedTab) return null;
+          return (
+            <div
+              className="absolute top-0 left-0 right-0 z-[15] bg-surface text-foreground text-[13px] h-[28px] leading-[28px] px-[10px] border-b border-edge-panel tracking-[1px] flex items-center justify-between select-none animate-in fade-in duration-200"
+              onDoubleClick={() => setFocusedTabId(null)}
             >
-              <Minimize2 className="h-3 w-3" />
-            </button>
-          </div>
-        );
-      })()}
-
-      {panelDrag && allSplitScreenTab.length > 1 && (() => {
-        const parentRect = containerRef.current?.getBoundingClientRect();
-        if (!parentRect) return null;
-        return allSplitScreenTab
-          .filter((tabId) => tabId !== panelDrag.sourceTabId)
-          .map((tabId) => {
-            const rect = panelRects[String(tabId)];
-            if (!rect) return null;
-            const isHovered = panelDrag.hoverTabId === tabId;
-            return (
-              <div
-                key={`drop-zone-${tabId}`}
-                className={`absolute transition-colors duration-150 ${
-                  isHovered
-                    ? "bg-blue-500/15 border-2 border-dashed border-blue-500"
-                    : "bg-transparent border-2 border-transparent"
-                } rounded flex items-center justify-center`}
-                style={{
-                  top: rect.top - parentRect.top,
-                  left: rect.left - parentRect.left,
-                  width: rect.width,
-                  height: rect.height,
-                  zIndex: 60,
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (panelDrag.hoverTabId !== tabId) {
-                    setPanelDrag((prev) =>
-                      prev ? { ...prev, hoverTabId: tabId } : prev,
-                    );
-                  }
-                }}
-                onDragLeave={() => {
-                  if (panelDrag.hoverTabId === tabId) {
-                    setPanelDrag((prev) =>
-                      prev ? { ...prev, hoverTabId: null } : prev,
-                    );
-                  }
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  swapInSplitLayout(panelDrag.sourceTabId, tabId);
-                  setPanelDrag(null);
-                }}
+              <span className="truncate flex-1">{focusedTab.title}</span>
+              <button
+                className="h-[28px] w-[28px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-hover transition-colors"
+                onClick={() => setFocusedTabId(null)}
+                title="Restore split view (Esc)"
               >
-                {isHovered && (
-                  <span className="text-blue-400 text-sm font-medium bg-surface/80 px-3 py-1 rounded">
-                    Drop to swap
-                  </span>
-                )}
-              </div>
-            );
-          });
-      })()}
+                <Minimize2 className="h-3 w-3" />
+              </button>
+            </div>
+          );
+        })()}
+
+      {panelDrag &&
+        allSplitScreenTab.length > 1 &&
+        (() => {
+          const parentRect = containerRef.current?.getBoundingClientRect();
+          if (!parentRect) return null;
+          return allSplitScreenTab
+            .filter((tabId) => tabId !== panelDrag.sourceTabId)
+            .map((tabId) => {
+              const rect = panelRects[String(tabId)];
+              if (!rect) return null;
+              const isHovered = panelDrag.hoverTabId === tabId;
+              return (
+                <div
+                  key={`drop-zone-${tabId}`}
+                  className={`absolute transition-colors duration-150 ${
+                    isHovered
+                      ? "bg-blue-500/15 border-2 border-dashed border-blue-500"
+                      : "bg-transparent border-2 border-transparent"
+                  } rounded flex items-center justify-center`}
+                  style={{
+                    top: rect.top - parentRect.top,
+                    left: rect.left - parentRect.left,
+                    width: rect.width,
+                    height: rect.height,
+                    zIndex: 60,
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (panelDrag.hoverTabId !== tabId) {
+                      setPanelDrag((prev) =>
+                        prev ? { ...prev, hoverTabId: tabId } : prev,
+                      );
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (panelDrag.hoverTabId === tabId) {
+                      setPanelDrag((prev) =>
+                        prev ? { ...prev, hoverTabId: null } : prev,
+                      );
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    swapInSplitLayout(panelDrag.sourceTabId, tabId);
+                    setPanelDrag(null);
+                  }}
+                >
+                  {isHovered && (
+                    <span className="text-blue-400 text-sm font-medium bg-surface/80 px-3 py-1 rounded">
+                      Drop to swap
+                    </span>
+                  )}
+                </div>
+              );
+            });
+        })()}
 
       {/* Source panel dim overlay */}
-      {panelDrag && (() => {
-        const parentRect = containerRef.current?.getBoundingClientRect();
-        const rect = panelRects[String(panelDrag.sourceTabId)];
-        if (!parentRect || !rect) return null;
-        return (
-          <div
-            className="absolute bg-black/30 rounded pointer-events-none"
-            style={{
-              top: rect.top - parentRect.top,
-              left: rect.left - parentRect.left,
-              width: rect.width,
-              height: rect.height,
-              zIndex: 60,
-            }}
-          />
-        );
-      })()}
+      {panelDrag &&
+        (() => {
+          const parentRect = containerRef.current?.getBoundingClientRect();
+          const rect = panelRects[String(panelDrag.sourceTabId)];
+          if (!parentRect || !rect) return null;
+          return (
+            <div
+              className="absolute bg-black/30 rounded pointer-events-none"
+              style={{
+                top: rect.top - parentRect.top,
+                left: rect.left - parentRect.left,
+                width: rect.width,
+                height: rect.height,
+                zIndex: 60,
+              }}
+            />
+          );
+        })()}
 
       {/* Directional drop zones for panel drag (top/right/bottom/left/center) */}
-      {panelDrag && allSplitScreenTab.length > 1 && (() => {
-        const parentRect = containerRef.current?.getBoundingClientRect();
-        if (!parentRect) return null;
+      {panelDrag &&
+        allSplitScreenTab.length > 1 &&
+        (() => {
+          const parentRect = containerRef.current?.getBoundingClientRect();
+          if (!parentRect) return null;
 
-        return (
-          // Must stack above the outer drop-zones wrapper at z-[65] so
-          // edge-adjacent panels' directional zones can still receive
-          // drops where they overlap the container-edge outer zones.
-          // Inner baseZIndex values only apply within this wrapper's
-          // stacking context, so the wrapper itself has to win.
-          <div className="absolute inset-0 z-[66] pointer-events-none">
-            {allSplitScreenTab
-              .filter((tabId) => tabId !== panelDrag.sourceTabId)
-              .map((tabId) => {
-                const rect = panelRects[String(tabId)];
+          return (
+            // Must stack above the outer drop-zones wrapper at z-[65] so
+            // edge-adjacent panels' directional zones can still receive
+            // drops where they overlap the container-edge outer zones.
+            // Inner baseZIndex values only apply within this wrapper's
+            // stacking context, so the wrapper itself has to win.
+            <div className="absolute inset-0 z-[66] pointer-events-none">
+              {allSplitScreenTab
+                .filter((tabId) => tabId !== panelDrag.sourceTabId)
+                .map((tabId) => {
+                  const rect = panelRects[String(tabId)];
+                  if (!rect) return null;
+
+                  const top = rect.top - parentRect.top;
+                  const left = rect.left - parentRect.left;
+                  const width = rect.width;
+                  const height = rect.height;
+
+                  const isSamePanel = (pos: DropPosition) =>
+                    externalDropTarget?.tabId === tabId &&
+                    externalDropTarget.position === pos;
+
+                  const handleEnter = (pos: DropPosition) =>
+                    setExternalDropTarget({ tabId, position: pos });
+                  const handleLeave = (pos: DropPosition) => {
+                    if (
+                      externalDropTarget?.tabId === tabId &&
+                      externalDropTarget.position === pos
+                    ) {
+                      setExternalDropTarget(null);
+                    }
+                  };
+                  const handleDrop = (pos: DropPosition) => {
+                    executeDragSplit(panelDrag.sourceTabId, {
+                      tabId,
+                      position: pos,
+                    });
+                    setExternalDropTarget(null);
+                    setPanelDrag(null);
+                  };
+
+                  return renderPanelDropZones({
+                    keyPrefix: `pdrop-${tabId}`,
+                    top,
+                    left,
+                    width,
+                    height,
+                    isSamePanel,
+                    handleEnter,
+                    handleLeave,
+                    handleDrop,
+                    centerLabel: "Swap",
+                    // Must sit above the outer edge zones (z-[65]) so that
+                    // edge-adjacent panels — the top row, bottom row, and
+                    // left/right columns — can still receive panel-level
+                    // snap drops where their own edge zones overlap the
+                    // container-edge outer zones.
+                    baseZIndex: 70,
+                  });
+                })}
+            </div>
+          );
+        })()}
+
+      {tabDragToSplit?.isOverTerminalArea &&
+        (() => {
+          const parentRect = containerRef.current?.getBoundingClientRect();
+          if (!parentRect) return null;
+
+          // When not in split mode yet, the active tab is the only "panel"
+          const targetIds =
+            allSplitScreenTab.length > 0
+              ? allSplitScreenTab
+              : currentTab
+                ? [currentTab]
+                : [];
+
+          if (targetIds.length === 0) return null;
+
+          return (
+            <div className="absolute inset-0 z-[55] pointer-events-none">
+              {targetIds.map((tabId) => {
+                if (tabId === tabDragToSplit.draggedTabId) return null;
+
+                let rect: DOMRect | null = null;
+                if (allSplitScreenTab.length === 0) {
+                  // Use container bounds for the single active panel
+                  rect = parentRect;
+                } else {
+                  rect = panelRects[String(tabId)] ?? null;
+                }
                 if (!rect) return null;
-
-                const top = rect.top - parentRect.top;
-                const left = rect.left - parentRect.left;
-                const width = rect.width;
-                const height = rect.height;
 
                 const isSamePanel = (pos: DropPosition) =>
                   externalDropTarget?.tabId === tabId &&
                   externalDropTarget.position === pos;
+
+                const top = rect === parentRect ? 0 : rect.top - parentRect.top;
+                const left =
+                  rect === parentRect ? 0 : rect.left - parentRect.left;
+                const width = rect.width;
+                const height = rect.height;
 
                 const handleEnter = (pos: DropPosition) =>
                   setExternalDropTarget({ tabId, position: pos });
@@ -1559,16 +1869,15 @@ export function AppView({
                   }
                 };
                 const handleDrop = (pos: DropPosition) => {
-                  executeDragSplit(panelDrag.sourceTabId, {
+                  executeDragSplit(tabDragToSplit.draggedTabId, {
                     tabId,
                     position: pos,
                   });
                   setExternalDropTarget(null);
-                  setPanelDrag(null);
                 };
 
                 return renderPanelDropZones({
-                  keyPrefix: `pdrop-${tabId}`,
+                  keyPrefix: `drop-${tabId}`,
                   top,
                   left,
                   width,
@@ -1577,251 +1886,172 @@ export function AppView({
                   handleEnter,
                   handleLeave,
                   handleDrop,
-                  centerLabel: "Swap",
-                  // Must sit above the outer edge zones (z-[65]) so that
-                  // edge-adjacent panels — the top row, bottom row, and
-                  // left/right columns — can still receive panel-level
-                  // snap drops where their own edge zones overlap the
-                  // container-edge outer zones.
-                  baseZIndex: 70,
+                  centerLabel: "Replace",
+                  baseZIndex: 56,
                 });
               })}
-          </div>
-        );
-      })()}
-
-      {tabDragToSplit?.isOverTerminalArea && (() => {
-        const parentRect = containerRef.current?.getBoundingClientRect();
-        if (!parentRect) return null;
-
-        // When not in split mode yet, the active tab is the only "panel"
-        const targetIds =
-          allSplitScreenTab.length > 0
-            ? allSplitScreenTab
-            : currentTab
-              ? [currentTab]
-              : [];
-
-        if (targetIds.length === 0) return null;
-
-        return (
-          <div className="absolute inset-0 z-[55] pointer-events-none">
-            {targetIds.map((tabId) => {
-              if (tabId === tabDragToSplit.draggedTabId) return null;
-
-              let rect: DOMRect | null = null;
-              if (allSplitScreenTab.length === 0) {
-                // Use container bounds for the single active panel
-                rect = parentRect;
-              } else {
-                rect = panelRects[String(tabId)] ?? null;
-              }
-              if (!rect) return null;
-
-              const isSamePanel = (pos: DropPosition) =>
-                externalDropTarget?.tabId === tabId &&
-                externalDropTarget.position === pos;
-
-              const top =
-                rect === parentRect ? 0 : rect.top - parentRect.top;
-              const left =
-                rect === parentRect ? 0 : rect.left - parentRect.left;
-              const width = rect.width;
-              const height = rect.height;
-
-              const handleEnter = (pos: DropPosition) =>
-                setExternalDropTarget({ tabId, position: pos });
-              const handleLeave = (pos: DropPosition) => {
-                if (
-                  externalDropTarget?.tabId === tabId &&
-                  externalDropTarget.position === pos
-                ) {
-                  setExternalDropTarget(null);
-                }
-              };
-              const handleDrop = (pos: DropPosition) => {
-                executeDragSplit(tabDragToSplit.draggedTabId, {
-                  tabId,
-                  position: pos,
-                });
-                setExternalDropTarget(null);
-              };
-
-              return renderPanelDropZones({
-                keyPrefix: `drop-${tabId}`,
-                top,
-                left,
-                width,
-                height,
-                isSamePanel,
-                handleEnter,
-                handleLeave,
-                handleDrop,
-                centerLabel: "Replace",
-                baseZIndex: 56,
-              });
-            })}
-          </div>
-        );
-      })()}
+            </div>
+          );
+        })()}
 
       {/* Outer drop zones — Max Row / Max Column at the splitview edges.
           Visible while dragging an external tab into split view OR while
           repositioning a panel that's already in the split view. */}
-      {(tabDragToSplit?.isOverTerminalArea || panelDrag) && (() => {
-        const OUTER_THICKNESS = 56; // px strip along each container edge
+      {(tabDragToSplit?.isOverTerminalArea || panelDrag) &&
+        (() => {
+          const OUTER_THICKNESS = 56; // px strip along each container edge
 
-        const draggedId = tabDragToSplit?.draggedTabId ?? panelDrag?.sourceTabId;
-        if (draggedId == null) return null;
+          const draggedId =
+            tabDragToSplit?.draggedTabId ?? panelDrag?.sourceTabId;
+          if (draggedId == null) return null;
 
-        const isActive = (edge: "top" | "right" | "bottom" | "left") =>
-          outerDropEdge === edge;
+          const isActive = (edge: "top" | "right" | "bottom" | "left") =>
+            outerDropEdge === edge;
 
-        const baseClass =
-          "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
-        const inactiveClass =
-          "bg-violet-500/15 border border-dashed border-violet-400/60";
-        const activeClass =
-          "bg-violet-500/45 border-2 border-violet-300";
+          const baseClass =
+            "absolute pointer-events-auto transition-colors duration-100 flex items-center justify-center";
+          const inactiveClass =
+            "bg-violet-500/15 border border-dashed border-violet-400/60";
+          const activeClass = "bg-violet-500/45 border-2 border-violet-300";
 
-        const handleEnter = (edge: "top" | "right" | "bottom" | "left") =>
-          setOuterDropEdge(edge);
-        const handleLeave = (edge: "top" | "right" | "bottom" | "left") => {
-          if (outerDropEdge === edge) setOuterDropEdge(null);
-        };
-        const handleDrop = (edge: "top" | "right" | "bottom" | "left") => {
-          addToSplitRoot(draggedId, edge);
-          setOuterDropEdge(null);
-          setExternalDropTarget(null);
-          if (tabDragToSplit) cancelTabDragToSplit();
-          if (panelDrag) setPanelDrag(null);
-        };
+          const handleEnter = (edge: "top" | "right" | "bottom" | "left") =>
+            setOuterDropEdge(edge);
+          const handleLeave = (edge: "top" | "right" | "bottom" | "left") => {
+            if (outerDropEdge === edge) setOuterDropEdge(null);
+          };
+          const handleDrop = (edge: "top" | "right" | "bottom" | "left") => {
+            addToSplitRoot(draggedId, edge);
+            setOuterDropEdge(null);
+            setExternalDropTarget(null);
+            if (tabDragToSplit) cancelTabDragToSplit();
+            if (panelDrag) setPanelDrag(null);
+          };
 
-        return (
-          <div className="absolute inset-0 z-[65] pointer-events-none">
-            {/* TOP edge — new row at top */}
-            <div
-              className={`${baseClass} ${
-                isActive("top") ? activeClass : inactiveClass
-              }`}
-              style={{
-                top: 0,
-                left: 0,
-                right: 0,
-                height: OUTER_THICKNESS,
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = "move";
-                handleEnter("top");
-              }}
-              onDragLeave={() => handleLeave("top")}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDrop("top");
-              }}
-            >
-              {isActive("top") && (
-                <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
-                  ↑ Max Row (top)
-                </span>
-              )}
+          return (
+            <div className="absolute inset-0 z-[71] pointer-events-none">
+              {/* TOP edge — new row at top */}
+              <div
+                className={`${baseClass} ${
+                  isActive("top") ? activeClass : inactiveClass
+                }`}
+                style={{
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: OUTER_THICKNESS,
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  handleEnter("top");
+                }}
+                onDragLeave={() => handleLeave("top")}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDrop("top");
+                }}
+              >
+                {isActive("top") && (
+                  <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
+                    ↑ Max Row (top)
+                  </span>
+                )}
+              </div>
+              {/* BOTTOM edge — new row at bottom */}
+              <div
+                className={`${baseClass} ${
+                  isActive("bottom") ? activeClass : inactiveClass
+                }`}
+                style={{
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: OUTER_THICKNESS,
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  handleEnter("bottom");
+                }}
+                onDragLeave={() => handleLeave("bottom")}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDrop("bottom");
+                }}
+              >
+                {isActive("bottom") && (
+                  <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
+                    ↓ Max Row (bottom)
+                  </span>
+                )}
+              </div>
+              {/* LEFT edge — new column at left */}
+              <div
+                className={`${baseClass} ${
+                  isActive("left") ? activeClass : inactiveClass
+                }`}
+                style={{
+                  top: OUTER_THICKNESS,
+                  bottom: OUTER_THICKNESS,
+                  left: 0,
+                  width: OUTER_THICKNESS,
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  handleEnter("left");
+                }}
+                onDragLeave={() => handleLeave("left")}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDrop("left");
+                }}
+              >
+                {isActive("left") && (
+                  <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                    Max Column
+                  </span>
+                )}
+              </div>
+              {/* RIGHT edge — new column at right */}
+              <div
+                className={`${baseClass} ${
+                  isActive("right") ? activeClass : inactiveClass
+                }`}
+                style={{
+                  top: OUTER_THICKNESS,
+                  bottom: OUTER_THICKNESS,
+                  right: 0,
+                  width: OUTER_THICKNESS,
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  handleEnter("right");
+                }}
+                onDragLeave={() => handleLeave("right")}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDrop("right");
+                }}
+              >
+                {isActive("right") && (
+                  <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
+                    Max Column
+                  </span>
+                )}
+              </div>
             </div>
-            {/* BOTTOM edge — new row at bottom */}
-            <div
-              className={`${baseClass} ${
-                isActive("bottom") ? activeClass : inactiveClass
-              }`}
-              style={{
-                bottom: 0,
-                left: 0,
-                right: 0,
-                height: OUTER_THICKNESS,
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = "move";
-                handleEnter("bottom");
-              }}
-              onDragLeave={() => handleLeave("bottom")}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDrop("bottom");
-              }}
-            >
-              {isActive("bottom") && (
-                <span className="text-violet-50 text-xs font-semibold bg-violet-700/85 px-2 py-0.5 rounded">
-                  ↓ Max Row (bottom)
-                </span>
-              )}
-            </div>
-            {/* LEFT edge — new column at left */}
-            <div
-              className={`${baseClass} ${
-                isActive("left") ? activeClass : inactiveClass
-              }`}
-              style={{
-                top: OUTER_THICKNESS,
-                bottom: OUTER_THICKNESS,
-                left: 0,
-                width: OUTER_THICKNESS,
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = "move";
-                handleEnter("left");
-              }}
-              onDragLeave={() => handleLeave("left")}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDrop("left");
-              }}
-            >
-              {isActive("left") && (
-                <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
-                  Max Column
-                </span>
-              )}
-            </div>
-            {/* RIGHT edge — new column at right */}
-            <div
-              className={`${baseClass} ${
-                isActive("right") ? activeClass : inactiveClass
-              }`}
-              style={{
-                top: OUTER_THICKNESS,
-                bottom: OUTER_THICKNESS,
-                right: 0,
-                width: OUTER_THICKNESS,
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = "move";
-                handleEnter("right");
-              }}
-              onDragLeave={() => handleLeave("right")}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                handleDrop("right");
-              }}
-            >
-              {isActive("right") && (
-                <span className="text-violet-50 text-[10px] font-semibold bg-violet-700/85 px-1.5 py-0.5 rounded -rotate-90 whitespace-nowrap">
-                  Max Column
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       {panelContextMenu && (
         <div

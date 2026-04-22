@@ -4,7 +4,7 @@ import { sshLogger } from "../utils/logger.js";
 import { getDb } from "../database/db/index.js";
 
 const MAX_BUFFER_BYTES = 512 * 1024;
-const DEFAULT_TIMEOUT_MINUTES = 30;
+const DEFAULT_TIMEOUT_MINUTES = 240;
 const HEALTH_CHECK_INTERVAL_MS = 60_000;
 const MAX_SESSIONS_PER_USER = 10;
 

@@ -541,8 +541,20 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         if (!next) return;
         if (last && last.cols === next.cols && last.rows === next.rows) return;
         if (webSocketRef.current?.readyState === WebSocket.OPEN) {
+          const el = xtermRef.current;
           webSocketRef.current.send(
-            JSON.stringify({ type: "resize", data: next }),
+            JSON.stringify({
+              type: "resize",
+              data: {
+                ...next,
+                // Include pixel dims so the PTY's winsize carries
+                // ws_xpixel/ws_ypixel — lets chafa read accurate
+                // pixel sizing via TIOCGWINSZ without firing a slow
+                // CSI 14 t round-trip.
+                pixelWidth: el?.clientWidth || undefined,
+                pixelHeight: el?.clientHeight || undefined,
+              },
+            }),
           );
           lastSentSizeRef.current = next;
         }
@@ -835,6 +847,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         const savedSessionId = persistenceEnabled
           ? localStorage.getItem(`t800_session_${tabId}`)
           : null;
+        const pxEl = xtermRef.current;
+        const pixelWidth = pxEl?.clientWidth || undefined;
+        const pixelHeight = pxEl?.clientHeight || undefined;
         if (savedSessionId && !isReconnectingRef.current) {
           sessionIdRef.current = savedSessionId;
           isAttachingSessionRef.current = true;
@@ -846,6 +861,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 sessionId: savedSessionId,
                 cols,
                 rows,
+                pixelWidth,
+                pixelHeight,
                 tabInstanceId: hostConfig.instanceId,
               },
             }),
@@ -855,7 +872,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           ws.send(
             JSON.stringify({
               type: "connectToHost",
-              data: { cols, rows, hostConfig, initialPath, executeCommand },
+              data: {
+                cols,
+                rows,
+                pixelWidth,
+                pixelHeight,
+                hostConfig,
+                initialPath,
+                executeCommand,
+              },
             }),
           );
         }
@@ -1635,6 +1660,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       terminal.options = {
         cursorBlink: config.cursorBlink,
         cursorStyle: config.cursorStyle,
+        cursorInactiveStyle: "none",
         scrollback: config.scrollback,
         fontSize: config.fontSize,
         fontFamily,
@@ -1756,8 +1782,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const resizeObserver = new ResizeObserver(() => {
         if (resizeTimeout.current) clearTimeout(resizeTimeout.current);
         resizeTimeout.current = setTimeout(() => {
-          if (isVisible && terminal?.cols > 0) {
-            performFit();
+          // Fit whenever dimensions change while visible — including
+          // the FIRST time the element gains non-zero dimensions (e.g.
+          // a terminal that was mounted into a split-view pane whose
+          // wrapper was briefly display:none). Without this, the
+          // initial fit against a zero-dim element leaves cols at 0
+          // forever, which makes chafa/neofetch sixel pixel reports
+          // fire with stale dimensions and leak into the bash prompt.
+          if (isVisible && xtermRef.current) {
+            const el = xtermRef.current;
+            if (el.offsetWidth > 0 && el.offsetHeight > 0) {
+              performFit();
+            }
           }
         }, 50);
       });
@@ -1832,6 +1868,23 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       const handleCustomKey = (e: KeyboardEvent): boolean => {
         if (e.type !== "keydown") {
           return true;
+        }
+
+        // Alt+H/J/K/L is reserved for vim-style split-pane navigation
+        // (AppView listens for it). Returning false here tells xterm
+        // not to consume the key or emit an ESC+letter sequence into
+        // the shell, so the nav handler can take it cleanly.
+        if (
+          e.altKey &&
+          !e.ctrlKey &&
+          !e.shiftKey &&
+          !e.metaKey &&
+          (e.key === "h" ||
+            e.key === "j" ||
+            e.key === "k" ||
+            e.key === "l")
+        ) {
+          return false;
         }
 
         if (
@@ -2121,9 +2174,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
       if (terminal.cols < 10 || terminal.rows < 3) {
         requestAnimationFrame(() => {
+          // Fit FIRST — duplicate tabs enter this branch with cols=0
+          // because xterm was opened while the split-view pane was
+          // briefly display:none. Measuring after rAF (when the
+          // wrapper is display:block) gives real cols/rows so the
+          // connection starts with correct dimensions.
+          fitAddonRef.current?.fit();
           if (terminal.cols > 0 && terminal.rows > 0) {
             setIsConnecting(true);
-            fitAddonRef.current?.fit();
             scheduleNotify(terminal.cols, terminal.rows);
             connectToHost(terminal.cols, terminal.rows);
           }
@@ -2157,6 +2215,21 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
       return () => clearTimeout(fitTimeoutId);
     }, [terminal, isVisible, splitScreen, isConnecting]);
+
+    // Auto-focus the terminal when it first connects so the user can
+    // start typing immediately without clicking. Fires once per connect
+    // transition; works in both single-tab and split-view modes
+    // (isVisible gates split-pane focus to the pane actually shown).
+    const didAutoFocusRef = useRef(false);
+    useEffect(() => {
+      if (!terminal || !isConnected || !isVisible) {
+        if (!isConnected) didAutoFocusRef.current = false;
+        return;
+      }
+      if (didAutoFocusRef.current) return;
+      didAutoFocusRef.current = true;
+      requestAnimationFrame(() => terminal.focus());
+    }, [terminal, isConnected, isVisible]);
 
     const hasConnectionError = !!connectionError;
 

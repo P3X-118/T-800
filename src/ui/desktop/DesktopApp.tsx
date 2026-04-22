@@ -15,6 +15,7 @@ import {
   TabProvider,
   useTabs,
 } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
+import { getLeafIds } from "@/ui/desktop/navigation/tabs/splitLayout.js";
 import { TopNavbar } from "@/ui/desktop/navigation/TopNavbar.tsx";
 import { CommandHistoryProvider } from "@/ui/desktop/apps/features/terminal/command-history/CommandHistoryContext.tsx";
 import { ServerStatusProvider } from "@/ui/contexts/ServerStatusContext";
@@ -62,7 +63,17 @@ function AppContent({
   const [transitionPhase, setTransitionPhase] = useState<
     "idle" | "fadeOut" | "fadeIn"
   >("idle");
-  const { currentTab, tabs, updateTab, addTab } = useTabs();
+  const {
+    currentTab,
+    tabs,
+    updateTab,
+    addTab,
+    setCurrentTab,
+    splitLayout,
+    removeTab,
+    addTabAfter,
+    setSplitScreenTabs,
+  } = useTabs();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
@@ -154,13 +165,94 @@ function AppContent({
       if (event.key === "Escape") {
         setIsCommandPaletteOpen(false);
       }
+
+      // Ctrl+D — duplicate the active terminal tab into a split view.
+      if (
+        event.key === "d" &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.repeat
+      ) {
+        if (currentTab != null) {
+          const active = tabs.find((t) => t.id === currentTab);
+          if (active && active.type === "terminal") {
+            event.preventDefault();
+            event.stopPropagation();
+            const newTabId = addTabAfter(active.id, {
+              type: "terminal",
+              title: active.title,
+              hostConfig: active.hostConfig,
+            });
+            if (newTabId > 0) {
+              const leaves = getLeafIds(splitLayout);
+              const base = leaves.includes(active.id) ? leaves : [active.id];
+              const merged = [...base, newTabId].slice(0, 12);
+              if (merged.length >= 2) setSplitScreenTabs(merged);
+            }
+          }
+        }
+        return;
+      }
+
+      // Ctrl+; — close the current tab (or focused pane in a split view).
+      if (
+        event.key === ";" &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.repeat
+      ) {
+        if (currentTab != null) {
+          event.preventDefault();
+          event.stopPropagation();
+          removeTab(currentTab);
+        }
+        return;
+      }
+
+      // Ctrl+J / Ctrl+K — cycle top-level tabs. Split-view directional
+      // nav uses a different modifier (Alt+H/J/K/L, in AppView), so
+      // these keep their flat-cycle behavior even inside a split.
+      if (
+        (event.key === "j" || event.key === "k") &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.repeat
+      ) {
+        const direction = event.key === "j" ? -1 : 1;
+        const ring = tabs.map((t) => t.id);
+        if (ring.length < 2) return;
+        const idx = currentTab != null ? ring.indexOf(currentTab) : -1;
+        if (idx === -1) return;
+        const nextIdx = (idx + direction + ring.length) % ring.length;
+        event.preventDefault();
+        event.stopPropagation();
+        setCurrentTab(ring[nextIdx]);
+      }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, {
+        capture: true,
+      } as EventListenerOptions);
     };
-  }, [theme, setTheme]);
+  }, [
+    theme,
+    setTheme,
+    tabs,
+    currentTab,
+    splitLayout,
+    setCurrentTab,
+    removeTab,
+    addTabAfter,
+    setSplitScreenTabs,
+  ]);
 
   useEffect(() => {
     const path = window.location.pathname;

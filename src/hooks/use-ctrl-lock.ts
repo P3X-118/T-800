@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 // Global "Ctrl-lock" state shared between the left and right sidebars.
 // Double-tapping the Ctrl key (two quick taps with no other key pressed
 // between them) cycles the mode:
-//   none  → open    (both sidebars visibly open, hover disabled)
-//   open  → closed  (both sidebars visibly closed, hover disabled)
-//   closed → open   (and so on)
+//   none   → closed (both sidebars visibly closed, hover disabled)
+//   closed → open   (both sidebars visibly open, hover disabled)
+//   open   → closed (and so on)
 //
 // While the mode is "open" or "closed" the effective visibility is forced
 // and hover handlers are gated off. The mode clears to "none" when the
@@ -26,12 +26,13 @@ function setMode(next: CtrlLockMode): void {
 }
 
 export function cycleCtrlLockOnDoubleTap(): void {
-  // none → open (first double-tap just forces parity to open).
-  // open → closed (next double-tap closes both and keeps hover off).
-  // closed → open (cycle back).
-  if (mode === "none") setMode("open");
-  else if (mode === "open") setMode("closed");
-  else setMode("open");
+  // none → closed (first double-tap collapses both sidebars for a
+  // distraction-free terminal view).
+  // closed → open (next double-tap opens both).
+  // open → closed (cycle back).
+  if (mode === "none") setMode("closed");
+  else if (mode === "closed") setMode("open");
+  else setMode("closed");
 }
 
 export function unlockCtrlLock(): void {
