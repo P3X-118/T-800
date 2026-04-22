@@ -24,11 +24,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
-
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -59,13 +54,17 @@ jobs:
           username: legitservices
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push multi-arch image
+      - name: Build and push image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/Dockerfile
           push: true
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          # Only linux/amd64 is built here. linux/arm64 and linux/arm/v7
+          # were dropped because QEMU emulation on the amd64 runner was
+          # timing out (2h45m+ cancelled runs). Re-enable once real arm
+          # hardware is available to take those platform builds natively.
+          platforms: linux/amd64
           tags: ${{ env.ALL_TAGS }}
           build-args: |
             BUILDKIT_INLINE_CACHE=1
