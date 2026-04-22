@@ -83,9 +83,27 @@ export interface Host {
   createdAt: string;
   updatedAt: string;
 
+  lastSeenAt?: string | null;
+  lastProbeFailedAt?: string | null;
+
   isShared?: boolean;
   permissionLevel?: "view";
   sharedExpiresAt?: string;
+}
+
+export type HostLiveness = "alive" | "dead" | "unknown";
+
+export function deriveHostLiveness(host: {
+  lastSeenAt?: string | null;
+  lastProbeFailedAt?: string | null;
+}): HostLiveness {
+  const seen = host.lastSeenAt ? Date.parse(host.lastSeenAt) : 0;
+  const failed = host.lastProbeFailedAt
+    ? Date.parse(host.lastProbeFailedAt)
+    : 0;
+  if (!seen && !failed) return "unknown";
+  if (failed > seen) return "dead";
+  return "alive";
 }
 
 export interface JumpHostData {

@@ -2572,6 +2572,40 @@ export async function unregisterMetricsViewer(
   }
 }
 
+export async function probeHostLiveness(
+  hostId: number,
+): Promise<{ alive: boolean; error?: string; lastSeenAt?: string }> {
+  try {
+    const response = await statsApi.post(`/metrics/probe/${hostId}`);
+    return response.data;
+  } catch (error: any) {
+    const data = error?.response?.data;
+    if (data && typeof data.alive === "boolean") {
+      return data;
+    }
+    handleApiError(error, "probe host liveness");
+    throw error;
+  }
+}
+
+export async function getStaleHosts(): Promise<
+  Array<{
+    id: number;
+    name: string | null;
+    ip: string;
+    lastSeenAt: string | null;
+    createdAt: string;
+  }>
+> {
+  try {
+    const response = await sshHostApi.get("/db/host/stale");
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (error) {
+    handleApiError(error, "fetch stale hosts");
+    throw error;
+  }
+}
+
 export async function submitMetricsTOTP(
   sessionId: string,
   totpCode: string,
