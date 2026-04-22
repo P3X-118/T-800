@@ -1244,11 +1244,17 @@ router.get(
         .where(eq(hosts.userId, userId));
 
       const cutoff = Date.now() - STALE_HOST_THRESHOLD_MS;
+      // A host is only "stale" if we've successfully seen it at least
+      // once AND it's been silent for >30d. Hosts with NULL last_seen_at
+      // are "unknown" — we've never probed them successfully, so we
+      // don't know if they're dead. This prevents the blood-moon prompt
+      // from firing for every pre-upgrade host on first login after
+      // schema migration, which would put prod hosts at risk of
+      // accidental deletion.
       const stale = rows.filter((row) => {
-        const seen = row.lastSeenAt ? Date.parse(row.lastSeenAt) : 0;
-        const created = row.createdAt ? Date.parse(row.createdAt) : 0;
-        if (seen > 0) return seen < cutoff;
-        return created > 0 && created < cutoff;
+        if (!row.lastSeenAt) return false;
+        const seen = Date.parse(row.lastSeenAt);
+        return seen > 0 && seen < cutoff;
       });
 
       res.json(stale);
