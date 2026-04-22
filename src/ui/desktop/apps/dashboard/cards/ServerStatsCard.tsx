@@ -1,27 +1,37 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ChartLine, Loader2, Server } from "lucide-react";
+import { ChartLine, Loader2, RotateCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { HostLiveness } from "@/types/index.ts";
 
 interface ServerStat {
   id: number;
   name: string;
   cpu: number | null;
   ram: number | null;
+  status: HostLiveness;
 }
 
 interface ServerStatsCardProps {
   serverStats: ServerStat[];
   loading: boolean;
   onServerClick: (serverId: number, serverName: string) => void;
+  onRetryConnection?: (serverId: number) => void;
+  retryingHostIds?: Set<number>;
 }
 
 export function ServerStatsCard({
   serverStats,
   loading,
   onServerClick,
+  onRetryConnection,
+  retryingHostIds,
 }: ServerStatsCardProps): React.ReactElement {
   const { t } = useTranslation();
+
+  const liveStats = serverStats.filter((s) => s.status !== "dead");
+  const deadStats = serverStats.filter((s) => s.status === "dead");
 
   return (
     <div className="border-2 border-edge rounded-md flex flex-col overflow-hidden transition-all duration-150 hover:border-primary/20 !bg-elevated">
@@ -43,35 +53,83 @@ export function ServerStatsCard({
               {t("dashboard.noServerData")}
             </p>
           ) : (
-            serverStats.map((server) => (
-              <Button
-                key={server.id}
-                variant="outline"
-                className="border-2 !border-edge h-auto p-3 min-w-0 !bg-canvas"
-                onClick={() => onServerClick(server.id, server.name)}
-              >
-                <div className="flex flex-col w-full">
-                  <div className="flex flex-row items-center mb-2">
-                    <Server size={20} className="shrink-0" />
-                    <p className="truncate ml-2 font-semibold">{server.name}</p>
+            <>
+              {liveStats.map((server) => (
+                <Button
+                  key={server.id}
+                  variant="outline"
+                  className="border-2 !border-edge h-auto p-3 min-w-0 !bg-canvas"
+                  onClick={() => onServerClick(server.id, server.name)}
+                >
+                  <div className="flex flex-col w-full">
+                    <div className="flex flex-row items-center mb-2">
+                      <Server size={20} className="shrink-0" />
+                      <p className="truncate ml-2 font-semibold">
+                        {server.name}
+                      </p>
+                    </div>
+                    <div className="flex flex-row justify-start gap-4 text-xs text-muted-foreground">
+                      <span>
+                        {t("dashboard.cpu")}:{" "}
+                        {server.cpu !== null
+                          ? `${server.cpu}%`
+                          : t("dashboard.notAvailable")}
+                      </span>
+                      <span>
+                        {t("dashboard.ram")}:{" "}
+                        {server.ram !== null
+                          ? `${server.ram}%`
+                          : t("dashboard.notAvailable")}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-row justify-start gap-4 text-xs text-muted-foreground">
-                    <span>
-                      {t("dashboard.cpu")}:{" "}
-                      {server.cpu !== null
-                        ? `${server.cpu}%`
-                        : t("dashboard.notAvailable")}
-                    </span>
-                    <span>
-                      {t("dashboard.ram")}:{" "}
-                      {server.ram !== null
-                        ? `${server.ram}%`
-                        : t("dashboard.notAvailable")}
-                    </span>
+                </Button>
+              ))}
+              {deadStats.map((server) => {
+                const retrying = retryingHostIds?.has(server.id) ?? false;
+                return (
+                  <div
+                    key={server.id}
+                    className="border-2 border-edge rounded-md p-3 min-w-0 bg-canvas flex flex-col"
+                  >
+                    <div className="flex flex-row items-center mb-2">
+                      <Server
+                        size={20}
+                        className="shrink-0 text-muted-foreground"
+                      />
+                      <p className="truncate ml-2 font-semibold text-muted-foreground">
+                        {server.name}
+                      </p>
+                      <Badge variant="destructive" className="ml-auto">
+                        Dead
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-1 h-7 text-xs"
+                      disabled={retrying || !onRetryConnection}
+                      onClick={() => onRetryConnection?.(server.id)}
+                    >
+                      {retrying ? (
+                        <>
+                          <Loader2
+                            className="animate-spin mr-2"
+                            size={12}
+                          />
+                          Probing…
+                        </>
+                      ) : (
+                        <>
+                          <RotateCw className="mr-2" size={12} />
+                          Retry Connection
+                        </>
+                      )}
+                    </Button>
                   </div>
-                </div>
-              </Button>
-            ))
+                );
+              })}
+            </>
           )}
         </div>
       </div>

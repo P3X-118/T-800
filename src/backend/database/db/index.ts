@@ -660,6 +660,9 @@ const migrateSchema = () => {
   addColumnIfNotExists("ssh_data", "host_key_last_verified", "TEXT");
   addColumnIfNotExists("ssh_data", "host_key_changed_count", "INTEGER DEFAULT 0");
 
+  addColumnIfNotExists("ssh_data", "last_seen_at", "TEXT");
+  addColumnIfNotExists("ssh_data", "last_probe_failed_at", "TEXT");
+
   addColumnIfNotExists(
     "ssh_data",
     "show_terminal_in_sidebar",
@@ -969,6 +972,8 @@ const migrateSchema = () => {
     { column: "host_key_first_seen", sql: "ALTER TABLE ssh_data ADD COLUMN host_key_first_seen TEXT" },
     { column: "host_key_last_verified", sql: "ALTER TABLE ssh_data ADD COLUMN host_key_last_verified TEXT" },
     { column: "host_key_changed_count", sql: "ALTER TABLE ssh_data ADD COLUMN host_key_changed_count INTEGER NOT NULL DEFAULT 0" },
+    { column: "last_seen_at", sql: "ALTER TABLE ssh_data ADD COLUMN last_seen_at TEXT" },
+    { column: "last_probe_failed_at", sql: "ALTER TABLE ssh_data ADD COLUMN last_probe_failed_at TEXT" },
   ];
 
   for (const migration of sshDataMigrations) {

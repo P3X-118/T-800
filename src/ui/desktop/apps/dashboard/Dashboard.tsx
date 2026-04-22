@@ -16,8 +16,12 @@ import {
   registerMetricsViewer,
   sendMetricsHeartbeat,
   getGuacamoleToken,
+  probeHostLiveness,
+  getStaleHosts,
+  deleteSSHHost,
   type RecentActivityItem,
 } from "@/ui/main-axios.ts";
+import { deriveHostLiveness, type HostLiveness } from "@/types/index.ts";
 import { useSidebar } from "@/components/ui/sidebar.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
@@ -31,6 +35,7 @@ import { ServerStatsCard } from "@/ui/desktop/apps/dashboard/cards/ServerStatsCa
 import { NetworkGraphCard } from "@/ui/desktop/apps/dashboard/cards/NetworkGraphCard";
 import { useDashboardPreferences } from "@/ui/desktop/apps/dashboard/hooks/useDashboardPreferences";
 import { DashboardSettingsDialog } from "@/ui/desktop/apps/dashboard/components/DashboardSettingsDialog";
+import { BloodMoonDialog } from "@/ui/desktop/apps/dashboard/components/BloodMoonDialog";
 import { SimpleLoader } from "@/ui/desktop/navigation/animations/SimpleLoader";
 
 interface DashboardProps {
@@ -82,8 +87,23 @@ export function Dashboard({
   const [recentActivityLoading, setRecentActivityLoading] =
     useState<boolean>(true);
   const [serverStats, setServerStats] = useState<
-    Array<{ id: number; name: string; cpu: number | null; ram: number | null }>
+    Array<{
+      id: number;
+      name: string;
+      cpu: number | null;
+      ram: number | null;
+      status: HostLiveness;
+    }>
   >([]);
+  const [retryingHostIds, setRetryingHostIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [staleQueue, setStaleQueue] = useState<
+    Array<{ id: number; name: string | null; ip: string }>
+  >([]);
+  const [dismissedStaleIds, setDismissedStaleIds] = useState<Set<number>>(
+    new Set(),
+  );
   const [serverStatsLoading, setServerStatsLoading] = useState<boolean>(true);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [viewerSessions, setViewerSessions] = useState<Map<number, string>>(
@@ -224,94 +244,123 @@ export function Dashboard({
 
         setServerStatsLoading(true);
         const newViewerSessions = new Map<number, string>();
-        const serversWithStats = await Promise.all(
-          hosts
-            .slice(0, 50)
-            .map(
-              async (host: {
-                id: number;
-                name: string;
-                authType?: string;
-                statsConfig?: string | { metricsEnabled?: boolean };
-              }) => {
+
+        const eligibleHosts = hosts
+          .slice(0, 50)
+          .filter(
+            (host: {
+              authType?: string;
+              statsConfig?: string | { metricsEnabled?: boolean };
+            }) => {
+              if (host.authType === "none" || host.authType === "opkssh") {
+                return false;
+              }
+              let statsConfig: { metricsEnabled?: boolean } = {
+                metricsEnabled: true,
+              };
+              if (host.statsConfig) {
                 try {
-                  let statsConfig: { metricsEnabled?: boolean } = {
-                    metricsEnabled: true,
-                  };
-                  if (host.statsConfig) {
-                    if (typeof host.statsConfig === "string") {
-                      statsConfig = JSON.parse(host.statsConfig);
-                    } else {
-                      statsConfig = host.statsConfig;
+                  statsConfig =
+                    typeof host.statsConfig === "string"
+                      ? JSON.parse(host.statsConfig)
+                      : host.statsConfig;
+                } catch {}
+              }
+              return statsConfig.metricsEnabled !== false;
+            },
+          );
+
+        const deadHosts = eligibleHosts.filter(
+          (host: {
+            lastSeenAt?: string | null;
+            lastProbeFailedAt?: string | null;
+          }) => deriveHostLiveness(host) === "dead",
+        );
+        const liveHosts = eligibleHosts.filter(
+          (host: {
+            lastSeenAt?: string | null;
+            lastProbeFailedAt?: string | null;
+          }) => deriveHostLiveness(host) !== "dead",
+        );
+
+        const liveServerStats = await Promise.all(
+          liveHosts.map(
+            async (host: {
+              id: number;
+              name: string;
+              lastSeenAt?: string | null;
+              lastProbeFailedAt?: string | null;
+            }) => {
+              const status = deriveHostLiveness(host);
+              try {
+                const existingSession = viewerSessions.get(host.id);
+                let sessionId = existingSession;
+
+                if (!existingSession) {
+                  try {
+                    const viewerResult = await registerMetricsViewer(host.id);
+                    if (viewerResult.success && viewerResult.viewerSessionId) {
+                      sessionId = viewerResult.viewerSessionId;
+                      newViewerSessions.set(host.id, sessionId);
                     }
+                  } catch (error) {
+                    console.error(
+                      `Failed to register viewer for host ${host.id}:`,
+                      error,
+                    );
                   }
-
-                  if (statsConfig.metricsEnabled === false) {
-                    return null;
-                  }
-
-                  if (host.authType === "none") {
-                    return null;
-                  }
-
-                  if (host.authType === "opkssh") {
-                    return null;
-                  }
-
-                  const existingSession = viewerSessions.get(host.id);
-                  let sessionId = existingSession;
-
-                  if (!existingSession) {
-                    try {
-                      const viewerResult = await registerMetricsViewer(host.id);
-                      if (
-                        viewerResult.success &&
-                        viewerResult.viewerSessionId
-                      ) {
-                        sessionId = viewerResult.viewerSessionId;
-                        newViewerSessions.set(host.id, sessionId);
-                      }
-                    } catch (error) {
-                      console.error(
-                        `Failed to register viewer for host ${host.id}:`,
-                        error,
-                      );
-                    }
-                  } else {
-                    newViewerSessions.set(host.id, existingSession);
-                  }
-
-                  const metrics = await getServerMetricsById(host.id);
-                  return {
-                    id: host.id,
-                    name: host.name || `Host ${host.id}`,
-                    cpu: metrics.cpu.percent,
-                    ram: metrics.memory.percent,
-                  };
-                } catch {
-                  return {
-                    id: host.id,
-                    name: host.name || `Host ${host.id}`,
-                    cpu: null,
-                    ram: null,
-                  };
+                } else {
+                  newViewerSessions.set(host.id, existingSession);
                 }
-              },
-            ),
+
+                const metrics = await getServerMetricsById(host.id);
+                return {
+                  id: host.id,
+                  name: host.name || `Host ${host.id}`,
+                  cpu: metrics.cpu.percent,
+                  ram: metrics.memory.percent,
+                  status,
+                };
+              } catch {
+                return {
+                  id: host.id,
+                  name: host.name || `Host ${host.id}`,
+                  cpu: null,
+                  ram: null,
+                  status,
+                };
+              }
+            },
+          ),
         );
+
         setViewerSessions(newViewerSessions);
-        const validServerStats = serversWithStats.filter(
-          (
-            server,
-          ): server is {
-            id: number;
-            name: string;
-            cpu: number | null;
-            ram: number | null;
-          } => server !== null && server.cpu !== null && server.ram !== null,
+
+        const deadServerStats = deadHosts.map(
+          (host: { id: number; name: string }) => ({
+            id: host.id,
+            name: host.name || `Host ${host.id}`,
+            cpu: null,
+            ram: null,
+            status: "dead" as HostLiveness,
+          }),
         );
-        setServerStats(validServerStats);
+
+        const merged = [
+          ...liveServerStats.filter(
+            (s) => s.cpu !== null && s.ram !== null,
+          ),
+          ...deadServerStats,
+        ];
+        setServerStats(merged);
         setServerStatsLoading(false);
+
+        try {
+          const stale = await getStaleHosts();
+          setStaleQueue(stale);
+        } catch (staleError) {
+          console.error("Failed to fetch stale hosts:", staleError);
+        }
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
         setRecentActivityLoading(false);
@@ -504,6 +553,58 @@ export function Dashboard({
         hostConfig: host,
       });
     });
+  };
+
+  const nextStaleHost = staleQueue.find(
+    (host) => !dismissedStaleIds.has(host.id),
+  );
+
+  const handleBloodMoonDelete = async () => {
+    if (!nextStaleHost) return;
+    const hostId = nextStaleHost.id;
+    try {
+      await deleteSSHHost(hostId);
+      setStaleQueue((prev) => prev.filter((h) => h.id !== hostId));
+      setServerStats((prev) => prev.filter((s) => s.id !== hostId));
+      setTotalServers((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error(`Failed to delete stale host ${hostId}:`, error);
+    }
+  };
+
+  const handleBloodMoonDismiss = () => {
+    if (!nextStaleHost) return;
+    setDismissedStaleIds((prev) => {
+      const next = new Set(prev);
+      next.add(nextStaleHost.id);
+      return next;
+    });
+  };
+
+  const handleRetryConnection = async (serverId: number) => {
+    setRetryingHostIds((prev) => {
+      const next = new Set(prev);
+      next.add(serverId);
+      return next;
+    });
+    try {
+      const result = await probeHostLiveness(serverId);
+      if (result.alive) {
+        setServerStats((prev) =>
+          prev.map((s) =>
+            s.id === serverId ? { ...s, status: "alive" as HostLiveness } : s,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(`Retry probe failed for host ${serverId}:`, error);
+    } finally {
+      setRetryingHostIds((prev) => {
+        const next = new Set(prev);
+        next.delete(serverId);
+        return next;
+      });
+    }
   };
 
   const handleAddHost = () => {
@@ -737,6 +838,8 @@ export function Dashboard({
                             serverStats={serverStats}
                             loading={serverStatsLoading}
                             onServerClick={handleServerStatClick}
+                            onRetryConnection={handleRetryConnection}
+                            retryingHostIds={retryingHostIds}
                           />
                         );
                       }
@@ -750,6 +853,15 @@ export function Dashboard({
       )}
 
       <AlertManager userId={userId} loggedIn={loggedIn} />
+
+      {nextStaleHost && (
+        <BloodMoonDialog
+          hostName={nextStaleHost.name || nextStaleHost.ip}
+          open={true}
+          onDelete={handleBloodMoonDelete}
+          onDismiss={handleBloodMoonDismiss}
+        />
+      )}
 
       {layout && (
         <DashboardSettingsDialog

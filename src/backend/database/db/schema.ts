@@ -165,6 +165,9 @@ export const hosts = sqliteTable("ssh_data", {
   hostKeyLastVerified: text("host_key_last_verified"),
   hostKeyChangedCount: integer("host_key_changed_count").default(0),
 
+  lastSeenAt: text("last_seen_at"),
+  lastProbeFailedAt: text("last_probe_failed_at"),
+
   createdAt: text("created_at")
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),

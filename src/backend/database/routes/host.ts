@@ -1220,6 +1220,48 @@ router.put(
  *       500:
  *         description: Failed to fetch SSH data.
  */
+const STALE_HOST_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+
+router.get(
+  "/db/host/stale",
+  authenticateJWT,
+  requireDataAccess,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!isNonEmptyString(userId)) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+    try {
+      const rows = await db
+        .select({
+          id: hosts.id,
+          name: hosts.name,
+          ip: hosts.ip,
+          lastSeenAt: hosts.lastSeenAt,
+          createdAt: hosts.createdAt,
+        })
+        .from(hosts)
+        .where(eq(hosts.userId, userId));
+
+      const cutoff = Date.now() - STALE_HOST_THRESHOLD_MS;
+      const stale = rows.filter((row) => {
+        const seen = row.lastSeenAt ? Date.parse(row.lastSeenAt) : 0;
+        const created = row.createdAt ? Date.parse(row.createdAt) : 0;
+        if (seen > 0) return seen < cutoff;
+        return created > 0 && created < cutoff;
+      });
+
+      res.json(stale);
+    } catch (err) {
+      sshLogger.error("Failed to fetch stale hosts", err, {
+        operation: "host_fetch_stale",
+        userId,
+      });
+      res.status(500).json({ error: "Failed to fetch stale hosts" });
+    }
+  },
+);
+
 router.get(
   "/db/host",
   authenticateJWT,
@@ -1294,6 +1336,8 @@ router.get(
           security: hosts.security,
           ignoreCert: hosts.ignoreCert,
           guacamoleConfig: hosts.guacamoleConfig,
+          lastSeenAt: hosts.lastSeenAt,
+          lastProbeFailedAt: hosts.lastProbeFailedAt,
 
           ownerId: hosts.userId,
           isShared: sql<boolean>`${hostAccess.id} IS NOT NULL AND ${hosts.userId} != ${userId}`,
