@@ -550,6 +550,36 @@ class AuthFailureTracker {
   }
 }
 
+async function markHostAlive(hostId: number): Promise<void> {
+  try {
+    await getDb()
+      .update(hosts)
+      .set({ lastSeenAt: new Date().toISOString() })
+      .where(eq(hosts.id, hostId));
+  } catch (error) {
+    statsLogger.debug("Failed to update last_seen_at", {
+      operation: "mark_host_alive",
+      hostId,
+      error,
+    });
+  }
+}
+
+async function markHostProbeFailed(hostId: number): Promise<void> {
+  try {
+    await getDb()
+      .update(hosts)
+      .set({ lastProbeFailedAt: new Date().toISOString() })
+      .where(eq(hosts.id, hostId));
+  } catch (error) {
+    statsLogger.debug("Failed to update last_probe_failed_at", {
+      operation: "mark_host_probe_failed",
+      hostId,
+      error,
+    });
+  }
+}
+
 class PollingBackoff {
   private failures = new Map<number, { count: number; nextRetry: number }>();
   private baseDelay = 30000;
@@ -896,12 +926,18 @@ class PollingManager {
         lastChecked: new Date().toISOString(),
       };
       this.statusStore.set(refreshedHost.id, statusEntry);
+      if (isOnline) {
+        void markHostAlive(refreshedHost.id);
+      } else {
+        void markHostProbeFailed(refreshedHost.id);
+      }
     } catch {
       const statusEntry: StatusEntry = {
         status: "offline",
         lastChecked: new Date().toISOString(),
       };
       this.statusStore.set(refreshedHost.id, statusEntry);
+      void markHostProbeFailed(refreshedHost.id);
     }
   }
 
@@ -942,8 +978,10 @@ class PollingManager {
         timestamp: Date.now(),
       });
       pollingBackoff.reset(refreshedHost.id);
+      void markHostAlive(refreshedHost.id);
     } catch (error) {
       pollingBackoff.recordFailure(refreshedHost.id);
+      void markHostProbeFailed(refreshedHost.id);
 
       const latestConfig = this.pollingConfigs.get(refreshedHost.id);
       if (latestConfig && latestConfig.statsConfig.metricsEnabled) {
@@ -954,6 +992,31 @@ class PollingManager {
           retryInfo: backoffInfo,
         });
       }
+    }
+  }
+
+  async probeHost(host: SSHHostWithCredentials): Promise<{
+    alive: boolean;
+    error?: string;
+    lastSeenAt?: string;
+  }> {
+    try {
+      await this.pollHostStatus(host);
+      if (supportsMetrics(host)) {
+        await this.pollHostMetrics(host);
+      }
+      const status = this.statusStore.get(host.id);
+      const alive = status?.status === "online";
+      if (alive) {
+        return { alive: true, lastSeenAt: new Date().toISOString() };
+      }
+      return { alive: false, error: "Host did not respond" };
+    } catch (error) {
+      void markHostProbeFailed(host.id);
+      return {
+        alive: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   }
 
@@ -2710,6 +2773,37 @@ app.post("/metrics/start/:id", validateHostId, async (req, res) => {
  *       500:
  *         description: Failed to stop metrics collection.
  */
+app.post("/metrics/probe/:id", validateHostId, async (req, res) => {
+  const id = Number(req.params.id);
+  const userId = (req as AuthenticatedRequest).userId;
+
+  if (!SimpleDBOps.isUserDataUnlocked(userId)) {
+    return res.status(401).json({
+      error: "Session expired - please log in again",
+      code: "SESSION_EXPIRED",
+    });
+  }
+
+  try {
+    const host = await fetchHostById(id, userId);
+    if (!host) {
+      return res.status(404).json({ error: "Host not found" });
+    }
+
+    const result = await pollingManager.probeHost(host);
+    return res.json(result);
+  } catch (error) {
+    statsLogger.error("Probe host failed", error, {
+      operation: "probe_host",
+      hostId: id,
+    });
+    return res.status(500).json({
+      alive: false,
+      error: error instanceof Error ? error.message : "Probe failed",
+    });
+  }
+});
+
 app.post("/metrics/stop/:id", validateHostId, async (req, res) => {
   const id = Number(req.params.id);
   const userId = (req as AuthenticatedRequest).userId;

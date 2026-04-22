@@ -1220,6 +1220,54 @@ router.put(
  *       500:
  *         description: Failed to fetch SSH data.
  */
+const STALE_HOST_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+
+router.get(
+  "/db/host/stale",
+  authenticateJWT,
+  requireDataAccess,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    if (!isNonEmptyString(userId)) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+    try {
+      const rows = await db
+        .select({
+          id: hosts.id,
+          name: hosts.name,
+          ip: hosts.ip,
+          lastSeenAt: hosts.lastSeenAt,
+          createdAt: hosts.createdAt,
+        })
+        .from(hosts)
+        .where(eq(hosts.userId, userId));
+
+      const cutoff = Date.now() - STALE_HOST_THRESHOLD_MS;
+      // A host is only "stale" if we've successfully seen it at least
+      // once AND it's been silent for >30d. Hosts with NULL last_seen_at
+      // are "unknown" — we've never probed them successfully, so we
+      // don't know if they're dead. This prevents the blood-moon prompt
+      // from firing for every pre-upgrade host on first login after
+      // schema migration, which would put prod hosts at risk of
+      // accidental deletion.
+      const stale = rows.filter((row) => {
+        if (!row.lastSeenAt) return false;
+        const seen = Date.parse(row.lastSeenAt);
+        return seen > 0 && seen < cutoff;
+      });
+
+      res.json(stale);
+    } catch (err) {
+      sshLogger.error("Failed to fetch stale hosts", err, {
+        operation: "host_fetch_stale",
+        userId,
+      });
+      res.status(500).json({ error: "Failed to fetch stale hosts" });
+    }
+  },
+);
+
 router.get(
   "/db/host",
   authenticateJWT,
@@ -1294,6 +1342,8 @@ router.get(
           security: hosts.security,
           ignoreCert: hosts.ignoreCert,
           guacamoleConfig: hosts.guacamoleConfig,
+          lastSeenAt: hosts.lastSeenAt,
+          lastProbeFailedAt: hosts.lastProbeFailedAt,
 
           ownerId: hosts.userId,
           isShared: sql<boolean>`${hostAccess.id} IS NOT NULL AND ${hosts.userId} != ${userId}`,
