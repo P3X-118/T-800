@@ -1368,6 +1368,38 @@ export async function deleteSSHHost(
   }
 }
 
+// Bulk-delete a set of hosts in a single backend request. Uses fetch
+// with keepalive:true so the browser is committed to sending the
+// request even if the page unloads immediately afterward — the
+// per-host axios loop variant silently failed in that case.
+export async function bulkDeleteSSHHosts(
+  hostIds: number[],
+): Promise<{ deleted: number[]; failed: number[] }> {
+  if (hostIds.length === 0) return { deleted: [], failed: [] };
+  const url = `${sshHostApi.defaults.baseURL ?? ""}/db/host/bulk-delete`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (isElectron()) {
+    headers["X-Electron-App"] = "true";
+    const token = localStorage.getItem("jwt");
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+    headers,
+    body: JSON.stringify({ ids: hostIds }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `bulk-delete failed: ${response.status} ${response.statusText}`,
+    );
+  }
+  return response.json();
+}
+
 export interface HostVerifyResult {
   hostId: number;
   name: string;

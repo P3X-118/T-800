@@ -8,50 +8,59 @@ import { useEffect, useState } from "react";
 //   open   → closed (and so on)
 //
 // While the mode is "open" or "closed" the effective visibility is forced
-// and hover handlers are gated off. The mode clears to "none" when the
-// user manually clicks either sidebar's toggle button — picked up by
-// each sidebar calling unlockCtrlLock() from its setIsSidebarOpen wrapper.
+// and hover handlers are gated off. Each side tracks its own mode so that
+// manually clicking one sidebar's toggle button unlocks only that side —
+// the other stays in whatever forced state the ctrl-tap left it in until
+// the user interacts with it directly.
 
 const DOUBLE_TAP_GAP_MS = 350;
 
 export type CtrlLockMode = "none" | "open" | "closed";
+export type CtrlLockSide = "left" | "right";
 
-let mode: CtrlLockMode = "none";
-const listeners = new Set<(m: CtrlLockMode) => void>();
+const modes: Record<CtrlLockSide, CtrlLockMode> = {
+  left: "none",
+  right: "none",
+};
+const listeners: Record<CtrlLockSide, Set<(m: CtrlLockMode) => void>> = {
+  left: new Set(),
+  right: new Set(),
+};
 
-function setMode(next: CtrlLockMode): void {
-  if (mode === next) return;
-  mode = next;
-  listeners.forEach((l) => l(mode));
+function setMode(side: CtrlLockSide, next: CtrlLockMode): void {
+  if (modes[side] === next) return;
+  modes[side] = next;
+  listeners[side].forEach((l) => l(next));
 }
 
 export function cycleCtrlLockOnDoubleTap(): void {
-  // none → closed (first double-tap collapses both sidebars for a
-  // distraction-free terminal view).
-  // closed → open (next double-tap opens both).
-  // open → closed (cycle back).
-  if (mode === "none") setMode("closed");
-  else if (mode === "closed") setMode("open");
-  else setMode("closed");
+  // Both sides cycle together on a double-tap. Use the left side as the
+  // reference for the current cycle position — they're kept in sync by
+  // this function, and only diverge when the user manually unlocks one.
+  const ref = modes.left;
+  const next: CtrlLockMode =
+    ref === "none" ? "closed" : ref === "closed" ? "open" : "closed";
+  setMode("left", next);
+  setMode("right", next);
 }
 
-export function unlockCtrlLock(): void {
-  setMode("none");
+export function unlockCtrlLock(side: CtrlLockSide): void {
+  setMode(side, "none");
 }
 
-export function getCtrlLockMode(): CtrlLockMode {
-  return mode;
+export function getCtrlLockMode(side: CtrlLockSide): CtrlLockMode {
+  return modes[side];
 }
 
 // Hook into a component so re-renders fire when the mode changes.
-export function useCtrlLockMode(): CtrlLockMode {
-  const [value, setValue] = useState(mode);
+export function useCtrlLockMode(side: CtrlLockSide): CtrlLockMode {
+  const [value, setValue] = useState(modes[side]);
   useEffect(() => {
-    listeners.add(setValue);
+    listeners[side].add(setValue);
     return () => {
-      listeners.delete(setValue);
+      listeners[side].delete(setValue);
     };
-  }, []);
+  }, [side]);
   return value;
 }
 

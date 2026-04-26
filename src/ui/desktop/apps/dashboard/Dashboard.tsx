@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 import { Auth } from "@/ui/desktop/authentication/Auth.tsx";
 import { AlertManager } from "@/ui/desktop/apps/dashboard/apps/alerts/AlertManager.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -19,9 +19,21 @@ import {
   probeHostLiveness,
   getStaleHosts,
   deleteSSHHost,
+  bulkDeleteSSHHosts,
   type RecentActivityItem,
 } from "@/ui/main-axios.ts";
 import { deriveHostLiveness, type HostLiveness } from "@/types/index.ts";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSidebar } from "@/components/ui/sidebar.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
@@ -64,6 +76,15 @@ export function Dashboard({
 }: DashboardProps): React.ReactElement {
   const { t } = useTranslation();
   const [loggedIn, setLoggedIn] = useState(isAuthenticated);
+  const [deletingAllDead, setDeletingAllDead] = useState(false);
+  const [deleteDeadConfirmOpen, setDeleteDeadConfirmOpen] = useState(false);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
   const [isAdmin, setIsAdmin] = useState(false);
   const [, setUsername] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -373,7 +394,27 @@ export function Dashboard({
     fetchDashboardData();
 
     const interval = setInterval(fetchDashboardData, 30000);
-    return () => clearInterval(interval);
+
+    const handleHostsChanged = (e: Event) => {
+      const deletedIds = (e as CustomEvent<{ deletedIds?: number[] }>).detail
+        ?.deletedIds;
+      if (deletedIds && deletedIds.length > 0) {
+        const deletedSet = new Set(deletedIds);
+        setServerStats((prev) => prev.filter((s) => !deletedSet.has(s.id)));
+        setStaleQueue((prev) => prev.filter((h) => !deletedSet.has(h.id)));
+        setRecentActivity((prev) =>
+          prev.filter((item) => !deletedSet.has(item.hostId)),
+        );
+        setTotalServers((prev) => Math.max(0, prev - deletedIds.length));
+      }
+      fetchDashboardData();
+    };
+    window.addEventListener("ssh-hosts:changed", handleHostsChanged);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("ssh-hosts:changed", handleHostsChanged);
+    };
   }, [loggedIn]);
 
   useEffect(() => {
@@ -605,6 +646,56 @@ export function Dashboard({
         return next;
       });
     }
+  };
+
+  const handleDeleteAllDead = () => {
+    const deadCount = serverStats.filter((s) => s.status === "dead").length;
+    if (deadCount === 0) return;
+    setDeleteDeadConfirmOpen(true);
+  };
+
+  const confirmDeleteAllDead = () => {
+    const deadIds = serverStats
+      .filter((s) => s.status === "dead")
+      .map((h) => h.id);
+    setDeleteDeadConfirmOpen(false);
+    if (deadIds.length === 0) return;
+    setDeletingAllDead(true);
+    // Fire a single keepalive bulk-delete request. The backend does the
+    // per-host work server-side, so the browser only needs to send one
+    // small request — and with keepalive:true the request completes
+    // even if the user reloads or navigates away immediately after
+    // clicking confirm. A per-host axios loop was getting aborted
+    // mid-flight on reload, which is the bug this fixes.
+    void (async () => {
+      try {
+        const result = await bulkDeleteSSHHosts(deadIds);
+        const succeeded = new Set(result.deleted);
+        if (succeeded.size > 0) {
+          window.dispatchEvent(new CustomEvent("hosts:changed"));
+          toast.success(
+            `Deleted ${succeeded.size} dead host${succeeded.size === 1 ? "" : "s"}`,
+          );
+        }
+        if (result.failed.length > 0) {
+          toast.error(
+            `Failed to delete ${result.failed.length} host${result.failed.length === 1 ? "" : "s"}`,
+          );
+        }
+        if (isMountedRef.current) {
+          if (succeeded.size > 0) {
+            setServerStats((prev) => prev.filter((s) => !succeeded.has(s.id)));
+            setStaleQueue((prev) => prev.filter((h) => !succeeded.has(h.id)));
+            setTotalServers((prev) => Math.max(0, prev - succeeded.size));
+          }
+        }
+      } catch (err) {
+        console.error("Bulk delete dead hosts failed:", err);
+        toast.error("Failed to delete dead hosts");
+      } finally {
+        if (isMountedRef.current) setDeletingAllDead(false);
+      }
+    })();
   };
 
   const handleAddHost = () => {
@@ -839,7 +930,9 @@ export function Dashboard({
                             loading={serverStatsLoading}
                             onServerClick={handleServerStatClick}
                             onRetryConnection={handleRetryConnection}
+                            onDeleteAllDead={handleDeleteAllDead}
                             retryingHostIds={retryingHostIds}
+                            deletingAllDead={deletingAllDead}
                           />
                         );
                       }
@@ -862,6 +955,34 @@ export function Dashboard({
           onDismiss={handleBloodMoonDismiss}
         />
       )}
+
+      <AlertDialog
+        open={deleteDeadConfirmOpen}
+        onOpenChange={setDeleteDeadConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete all dead hosts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const n = serverStats.filter(
+                  (s) => s.status === "dead",
+                ).length;
+                return `This will permanently delete ${n} dead host${n === 1 ? "" : "s"}. This cannot be undone.`;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel autoFocus>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteAllDead}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Dead
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {layout && (
         <DashboardSettingsDialog

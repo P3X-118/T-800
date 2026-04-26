@@ -745,7 +745,7 @@ export const DEFAULT_TERMINAL_CONFIG = {
   fontSize: 14,
   fontFamily: "Caskaydia Cove Nerd Font Mono",
   letterSpacing: 0,
-  lineHeight: 1.0,
+  lineHeight: 1.2,
   theme: "t800",
 
   scrollback: 10000,
