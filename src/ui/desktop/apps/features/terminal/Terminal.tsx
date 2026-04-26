@@ -398,6 +398,24 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       }
     }
 
+    // Measure the actual drawable cell area, not the xterm wrapper —
+    // wrapper clientWidth/Height includes padding + scrollbar, which
+    // inflates ws_xpixel on TIOCGWINSZ and makes chafa pick wrong-
+    // aspect symbols. `.xterm-screen` is the element cells render into.
+    function getRenderPixelDims(): {
+      pixelWidth: number | undefined;
+      pixelHeight: number | undefined;
+    } {
+      const root = xtermRef.current;
+      if (!root) return { pixelWidth: undefined, pixelHeight: undefined };
+      const screen = root.querySelector(".xterm-screen") as HTMLElement | null;
+      const el = screen ?? root;
+      return {
+        pixelWidth: el.clientWidth || undefined,
+        pixelHeight: el.clientHeight || undefined,
+      };
+    }
+
     function performFit() {
       if (
         !fitAddonRef.current ||
@@ -541,7 +559,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         if (!next) return;
         if (last && last.cols === next.cols && last.rows === next.rows) return;
         if (webSocketRef.current?.readyState === WebSocket.OPEN) {
-          const el = xtermRef.current;
+          const dims = getRenderPixelDims();
           webSocketRef.current.send(
             JSON.stringify({
               type: "resize",
@@ -549,10 +567,9 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 ...next,
                 // Include pixel dims so the PTY's winsize carries
                 // ws_xpixel/ws_ypixel — lets chafa read accurate
-                // pixel sizing via TIOCGWINSZ without firing a slow
-                // CSI 14 t round-trip.
-                pixelWidth: el?.clientWidth || undefined,
-                pixelHeight: el?.clientHeight || undefined,
+                // pixel sizing via TIOCGWINSZ.
+                pixelWidth: dims.pixelWidth,
+                pixelHeight: dims.pixelHeight,
               },
             }),
           );
@@ -847,9 +864,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         const savedSessionId = persistenceEnabled
           ? localStorage.getItem(`t800_session_${tabId}`)
           : null;
-        const pxEl = xtermRef.current;
-        const pixelWidth = pxEl?.clientWidth || undefined;
-        const pixelHeight = pxEl?.clientHeight || undefined;
+        const { pixelWidth, pixelHeight } = getRenderPixelDims();
         if (savedSessionId && !isReconnectingRef.current) {
           sessionIdRef.current = savedSessionId;
           isAttachingSessionRef.current = true;

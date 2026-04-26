@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { ChartLine, Loader2, RotateCw, Server } from "lucide-react";
+import { ChartLine, Loader2, RotateCw, Server, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { HostLiveness } from "@/types/index.ts";
@@ -18,7 +18,9 @@ interface ServerStatsCardProps {
   loading: boolean;
   onServerClick: (serverId: number, serverName: string) => void;
   onRetryConnection?: (serverId: number) => void;
+  onDeleteAllDead?: () => void;
   retryingHostIds?: Set<number>;
+  deletingAllDead?: boolean;
 }
 
 export function ServerStatsCard({
@@ -26,7 +28,9 @@ export function ServerStatsCard({
   loading,
   onServerClick,
   onRetryConnection,
+  onDeleteAllDead,
   retryingHostIds,
+  deletingAllDead,
 }: ServerStatsCardProps): React.ReactElement {
   const { t } = useTranslation();
 
@@ -36,10 +40,29 @@ export function ServerStatsCard({
   return (
     <div className="border-2 border-edge rounded-md flex flex-col overflow-hidden transition-all duration-150 hover:border-primary/20 !bg-elevated">
       <div className="flex flex-col mx-3 my-2 flex-1 overflow-hidden">
-        <p className="text-xl font-semibold mb-3 mt-1 flex flex-row items-center">
-          <ChartLine className="mr-3" />
-          {t("dashboard.serverStats")}
-        </p>
+        <div className="flex flex-row items-center mb-3 mt-1">
+          <p className="text-xl font-semibold flex flex-row items-center">
+            <ChartLine className="mr-3" />
+            {t("dashboard.serverStats")}
+          </p>
+          {deadStats.length > 0 && onDeleteAllDead && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-7 text-xs text-red-400 border-edge hover:bg-destructive/10 hover:text-red-400"
+              onClick={onDeleteAllDead}
+              disabled={deletingAllDead}
+              title={`Delete all ${deadStats.length} dead host${deadStats.length === 1 ? "" : "s"}`}
+            >
+              {deletingAllDead ? (
+                <Loader2 className="animate-spin mr-2" size={12} />
+              ) : (
+                <Trash2 className="mr-2" size={12} />
+              )}
+              Delete Dead ({deadStats.length})
+            </Button>
+          )}
+        </div>
         <div
           className={`grid gap-4 grid-cols-3 auto-rows-min overflow-x-hidden thin-scrollbar ${loading ? "overflow-y-hidden" : "overflow-y-auto"}`}
         >

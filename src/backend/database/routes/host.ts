@@ -1687,6 +1687,125 @@ router.get(
  *       500:
  *         description: Failed to delete SSH host.
  */
+// Bulk-delete endpoint for the "Delete all Dead hosts" action. Accepts
+// a list of host IDs and deletes each one the user owns in a single
+// request. The client fires this with fetch keepalive:true so the
+// browser is obligated to complete the request even if the user
+// reloads or navigates away immediately after clicking confirm —
+// which was breaking the per-host-loop variant of this operation.
+router.post(
+  "/db/host/bulk-delete",
+  authenticateJWT,
+  requireDataAccess,
+  async (req: Request, res: Response) => {
+    const userId = (req as AuthenticatedRequest).userId;
+    const rawIds = (req.body as { ids?: unknown })?.ids;
+
+    if (!isNonEmptyString(userId)) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      return res.status(400).json({ error: "ids must be a non-empty array" });
+    }
+    const ids = rawIds
+      .map((v) => (typeof v === "number" ? v : Number(v)))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (ids.length === 0) {
+      return res.status(400).json({ error: "No valid host ids" });
+    }
+
+    databaseLogger.info("Bulk deleting SSH hosts", {
+      operation: "host_bulk_delete",
+      userId,
+      count: ids.length,
+    });
+
+    const deleted: number[] = [];
+    const failed: number[] = [];
+
+    for (const numericHostId of ids) {
+      try {
+        const owned = await db
+          .select({ id: hosts.id })
+          .from(hosts)
+          .where(and(eq(hosts.id, numericHostId), eq(hosts.userId, userId)));
+        if (owned.length === 0) {
+          failed.push(numericHostId);
+          continue;
+        }
+
+        await db
+          .delete(fileManagerRecent)
+          .where(eq(fileManagerRecent.hostId, numericHostId));
+        await db
+          .delete(fileManagerPinned)
+          .where(eq(fileManagerPinned.hostId, numericHostId));
+        await db
+          .delete(fileManagerShortcuts)
+          .where(eq(fileManagerShortcuts.hostId, numericHostId));
+        await db
+          .delete(commandHistory)
+          .where(eq(commandHistory.hostId, numericHostId));
+        await db
+          .delete(sshCredentialUsage)
+          .where(eq(sshCredentialUsage.hostId, numericHostId));
+        await db
+          .delete(recentActivity)
+          .where(eq(recentActivity.hostId, numericHostId));
+        await db
+          .delete(hostAccess)
+          .where(eq(hostAccess.hostId, numericHostId));
+        await db
+          .delete(sessionRecordings)
+          .where(eq(sessionRecordings.hostId, numericHostId));
+        await db
+          .delete(hosts)
+          .where(and(eq(hosts.id, numericHostId), eq(hosts.userId, userId)));
+
+        deleted.push(numericHostId);
+
+        try {
+          const axios = (await import("axios")).default;
+          const statsPort = 30005;
+          await axios.post(
+            `http://localhost:${statsPort}/host-deleted`,
+            { hostId: numericHostId },
+            {
+              headers: {
+                Authorization: req.headers.authorization || "",
+                Cookie: req.headers.cookie || "",
+              },
+              timeout: 5000,
+            },
+          );
+        } catch (err) {
+          sshLogger.warn("Failed to notify stats server of host deletion", {
+            operation: "host_bulk_delete",
+            hostId: numericHostId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } catch (err) {
+        failed.push(numericHostId);
+        sshLogger.error("Failed to delete SSH host in bulk", err, {
+          operation: "host_bulk_delete",
+          hostId: numericHostId,
+          userId,
+        });
+      }
+    }
+
+    databaseLogger.success("Bulk host delete complete", {
+      operation: "host_bulk_delete_success",
+      userId,
+      deleted: deleted.length,
+      failed: failed.length,
+    });
+
+    res.json({ deleted, failed });
+  },
+);
+
 router.delete(
   "/db/host/:id",
   authenticateJWT,

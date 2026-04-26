@@ -182,7 +182,11 @@ export function Host({ host: initialHost }: HostProps): React.ReactElement {
             localStorage.removeItem(`t800_session_${tabKey}`);
           }
           toast.success(t("hosts.hostDeletedSuccessfully", { name: title }));
-          window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+          window.dispatchEvent(
+            new CustomEvent("ssh-hosts:changed", {
+              detail: { deletedIds: [host.id] },
+            }),
+          );
           refreshServerPolling();
         } catch {
           toast.error(t("hosts.failedToDeleteHost"));

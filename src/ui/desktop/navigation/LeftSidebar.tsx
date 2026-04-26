@@ -101,7 +101,7 @@ export function LeftSidebar({
     });
   const [isSidebarHoverOpen, setIsSidebarHoverOpen] =
     useState<boolean>(false);
-  const ctrlLockMode = useCtrlLockMode();
+  const ctrlLockMode = useCtrlLockMode("left");
   const ctrlLocked = ctrlLockMode !== "none";
   // Effective state.
   //  - ctrlLockMode "open"   → forced visibly open regardless of persisted/hover.
@@ -120,7 +120,7 @@ export function LeftSidebar({
   // lock — the user clicking their own button is the canonical exit
   // from a Ctrl-locked mode.
   const setIsSidebarOpen = React.useCallback((open: boolean) => {
-    unlockCtrlLock();
+    unlockCtrlLock("left");
     setIsSidebarOpenPersisted(open);
     if (!open) setIsSidebarHoverOpen(false);
   }, []);
@@ -722,7 +722,11 @@ export function LeftSidebar({
 
       toast.success(`Deleted ${deleted} hosts`);
       setSelectedFolders(new Set());
-      window.dispatchEvent(new CustomEvent("ssh-hosts:changed"));
+      window.dispatchEvent(
+        new CustomEvent("ssh-hosts:changed", {
+          detail: { deletedIds: hostIds },
+        }),
+      );
       window.dispatchEvent(new CustomEvent("folders:changed"));
     },
     [hostsByFolder, tabList, removeTab],

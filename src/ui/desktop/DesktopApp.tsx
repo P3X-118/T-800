@@ -63,6 +63,7 @@ function AppContent({
   const [transitionPhase, setTransitionPhase] = useState<
     "idle" | "fadeOut" | "fadeIn"
   >("idle");
+  const [terminalsCondensed, setTerminalsCondensed] = useState(true);
   const {
     currentTab,
     tabs,
@@ -89,6 +90,11 @@ function AppContent({
   const lastShiftPressTime = useRef(0);
 
   const lastAltPressTime = useRef(0);
+
+  // Ctrl+J/K lands on a tab; when Ctrl is released after that landing,
+  // move focus to the active terminal so the user can start typing
+  // without a click. Set by the Ctrl+J/K handler, cleared on keyup.
+  const pendingVimNavFocusRef = useRef(false);
 
   useEffect(() => {
     const handleDatabaseConnectionLost = () => {
@@ -213,9 +219,11 @@ function AppContent({
         return;
       }
 
-      // Ctrl+J / Ctrl+K — cycle top-level tabs. Split-view directional
-      // nav uses a different modifier (Alt+H/J/K/L, in AppView), so
-      // these keep their flat-cycle behavior even inside a split.
+      // Ctrl+J / Ctrl+K — cycle top-level tabs in visual order.
+      // Split-view directional nav uses a different modifier
+      // (Alt+H/J/K/L, in AppView). When the split group is condensed
+      // into a single pill, the ring treats the whole group as one
+      // entry so the user doesn't have to press through every member.
       if (
         (event.key === "j" || event.key === "k") &&
         event.ctrlKey &&
@@ -225,20 +233,77 @@ function AppContent({
         !event.repeat
       ) {
         const direction = event.key === "j" ? -1 : 1;
-        const ring = tabs.map((t) => t.id);
+        const splitIds = getLeafIds(splitLayout);
+        const shouldCondense = terminalsCondensed && splitIds.length >= 2;
+
+        type RingEntry =
+          | { kind: "tab"; id: number }
+          | { kind: "split"; firstId: number; ids: Set<number> };
+        const ring: RingEntry[] = [];
+
+        if (shouldCondense) {
+          const splitSet = new Set(splitIds);
+          const splitGroupTabs = tabs.filter((t) => splitSet.has(t.id));
+          const normalTabs = tabs.filter((t) => !splitSet.has(t.id));
+          // Mirror TopNavbar's pill-injection rule: the condensed pill
+          // renders after ssh_manager if present, else after home.
+          const pillAnchorType = normalTabs.some(
+            (t) => t.type === "ssh_manager",
+          )
+            ? "ssh_manager"
+            : "home";
+          const splitEntry: RingEntry = {
+            kind: "split",
+            firstId: splitGroupTabs[0]?.id ?? splitIds[0],
+            ids: splitSet,
+          };
+          let injected = false;
+          for (const t of normalTabs) {
+            ring.push({ kind: "tab", id: t.id });
+            if (!injected && t.type === pillAnchorType) {
+              ring.push(splitEntry);
+              injected = true;
+            }
+          }
+          if (!injected) ring.push(splitEntry);
+        } else {
+          for (const t of tabs) ring.push({ kind: "tab", id: t.id });
+        }
+
         if (ring.length < 2) return;
-        const idx = currentTab != null ? ring.indexOf(currentTab) : -1;
+        const idx =
+          currentTab != null
+            ? ring.findIndex((e) =>
+                e.kind === "tab" ? e.id === currentTab : e.ids.has(currentTab),
+              )
+            : -1;
         if (idx === -1) return;
         const nextIdx = (idx + direction + ring.length) % ring.length;
+        const next = ring[nextIdx];
+        const targetId = next.kind === "tab" ? next.id : next.firstId;
         event.preventDefault();
         event.stopPropagation();
-        setCurrentTab(ring[nextIdx]);
+        setCurrentTab(targetId);
+        pendingVimNavFocusRef.current = true;
       }
     };
 
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "Control") return;
+      if (!pendingVimNavFocusRef.current) return;
+      pendingVimNavFocusRef.current = false;
+      // Terminal components listen for this and focus xterm if they
+      // are the visible, non-split-screen pane.
+      window.dispatchEvent(new CustomEvent("t800:focus-active-terminal"));
+    };
+
     window.addEventListener("keydown", handleKeyDown, { capture: true });
+    window.addEventListener("keyup", handleKeyUp, { capture: true });
     return () => {
       window.removeEventListener("keydown", handleKeyDown, {
+        capture: true,
+      } as EventListenerOptions);
+      window.removeEventListener("keyup", handleKeyUp, {
         capture: true,
       } as EventListenerOptions);
     };
@@ -252,6 +317,7 @@ function AppContent({
     removeTab,
     addTabAfter,
     setSplitScreenTabs,
+    terminalsCondensed,
   ]);
 
   useEffect(() => {
@@ -558,6 +624,8 @@ function AppContent({
               setRightSidebarOpen(isOpen);
               setRightSidebarWidth(width);
             }}
+            terminalsCondensed={terminalsCondensed}
+            setTerminalsCondensed={setTerminalsCondensed}
           />
         </LeftSidebar>
       )}

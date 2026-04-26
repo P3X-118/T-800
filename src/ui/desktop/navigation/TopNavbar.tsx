@@ -48,6 +48,8 @@ interface TopNavbarProps {
   setIsTopbarHoverOpen?: (open: boolean) => void;
   onOpenCommandPalette: () => void;
   onRightSidebarStateChange?: (isOpen: boolean, width: number) => void;
+  terminalsCondensed: boolean;
+  setTerminalsCondensed: (condensed: boolean) => void;
 }
 
 export function TopNavbar({
@@ -57,6 +59,8 @@ export function TopNavbar({
   setIsTopbarHoverOpen,
   onOpenCommandPalette,
   onRightSidebarStateChange,
+  terminalsCondensed,
+  setTerminalsCondensed,
 }: TopNavbarProps): React.ReactElement {
   // Whether the persistent toggle is closed. Falls back to the legacy
   // single-state behavior when the parent doesn't pass the persisted state.
@@ -112,7 +116,7 @@ export function TopNavbar({
   // opens temporarily, clicking the toggle pins it open.
   const [isToolsPersistedOpen, setIsToolsPersistedOpen] = useState(false);
   const [isToolsHoverOpen, setIsToolsHoverOpen] = useState(false);
-  const ctrlLockMode = useCtrlLockMode();
+  const ctrlLockMode = useCtrlLockMode("right");
   const ctrlLocked = ctrlLockMode !== "none";
   // Effective visibility: Ctrl-lock forces open/closed in either direction;
   // otherwise fall back to persisted OR transient hover.
@@ -124,7 +128,7 @@ export function TopNavbar({
         : isToolsPersistedOpen || isToolsHoverOpen;
   // Manual toggle — also clears the Ctrl lock (the canonical exit path).
   const setToolsSidebarOpen = React.useCallback((open: boolean) => {
-    unlockCtrlLock();
+    unlockCtrlLock("right");
     setIsToolsPersistedOpen(open);
     if (!open) setIsToolsHoverOpen(false);
   }, []);
@@ -163,7 +167,6 @@ export function TopNavbar({
   const [commandHistoryTabActive, setCommandHistoryTabActive] = useState(false);
   const [quickConnectOpen, setQuickConnectOpen] = useState(false);
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false);
-  const [terminalsCondensed, setTerminalsCondensed] = useState(true);
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{
     x: number;
     y: number;
@@ -1384,13 +1387,14 @@ export function TopNavbar({
                       <button
                         className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
                         onClick={() => {
-                          // Collapse the whole split view back to single-tab
-                          // mode. All underlying tabs are preserved — the
-                          // user can reopen any of them from the tab bar.
-                          const firstId = allSplitScreenTab[0];
-                          setSplitLayout(null);
-                          if (firstId != null) setCurrentTab(firstId);
+                          // Close every tab in the split group. Closing the
+                          // pill should tear down the whole split — not dump
+                          // the underlying terminals back into independent
+                          // tabs. removeTab prunes them from splitLayout as
+                          // each one goes.
+                          const ids = [...allSplitScreenTab];
                           setSplitPillContextMenu(null);
+                          for (const id of ids) removeTab(id);
                         }}
                       >
                         <X className="w-3.5 h-3.5" />
