@@ -1379,10 +1379,46 @@ wss.on("connection", async (ws: WebSocket, req) => {
           // and prevent the ImageAddon from rendering sixel images.
           const utf8Decoder = new StringDecoder("utf8");
 
+          // Idle-output detection: when the PTY has produced no bytes
+          // for IDLE_THRESHOLD_MS, emit an "idle" frame so the client
+          // can pulse the tab pill (proxy for "process is waiting on
+          // user input"). False-positives on long silent computations
+          // are accepted — a stricter signal would require shell-side
+          // OSC 133 cooperation we can't assume on arbitrary hosts.
+          const IDLE_THRESHOLD_MS = 1500;
+          let idleTimer: NodeJS.Timeout | null = null;
+          let isIdle = false;
+          const sendIdleState = (idle: boolean) => {
+            const s = sessionManager.getSession(boundSessionId);
+            if (s?.attachedWs?.readyState === WebSocket.OPEN) {
+              s.attachedWs.send(
+                JSON.stringify({ type: idle ? "idle" : "active" }),
+              );
+            }
+          };
+          const markActive = () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (isIdle) {
+              isIdle = false;
+              sendIdleState(false);
+            }
+            idleTimer = setTimeout(() => {
+              isIdle = true;
+              sendIdleState(true);
+            }, IDLE_THRESHOLD_MS);
+          };
+          const clearIdleTimer = () => {
+            if (idleTimer) {
+              clearTimeout(idleTimer);
+              idleTimer = null;
+            }
+          };
+
           stream.on("data", (data: Buffer) => {
             try {
               const session = sessionManager.getSession(boundSessionId);
               if (!session) return;
+              markActive();
 
               // Decode with a stateful decoder so boundary-split UTF-8
               // sequences are buffered until the next chunk completes
@@ -1463,6 +1499,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           });
 
           stream.on("close", () => {
+            clearIdleTimer();
             const session = sessionManager.getSession(boundSessionId);
             // Drain any residual buffered UTF-8 bytes from the decoder.
             const trailing = utf8Decoder.end();
@@ -1489,6 +1526,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           });
 
           stream.on("error", (err: Error) => {
+            clearIdleTimer();
             sshLogger.error("SSH stream error", err, {
               operation: "ssh_stream",
               hostId: id,
