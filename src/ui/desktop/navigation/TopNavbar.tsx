@@ -135,6 +135,16 @@ export function TopNavbar({
     if (!open) setIsToolsHoverOpen(false);
   }, []);
 
+  // Pin-open without touching the Ctrl lock. Used for incidental opens
+  // (programmatic opens like "show command history", or double-click-
+  // to-pin gestures inside the sidebar). Going through
+  // setToolsSidebarOpen would silently drop the lock as a side effect,
+  // and the next hover-leave would then collapse the sidebar.
+  const pinToolsSidebarOpen = React.useCallback(() => {
+    setIsToolsPersistedOpen(true);
+    setIsToolsHoverOpen(false);
+  }, []);
+
   // Hover-open handling for the closed right tools sidebar — identical
   // grace-timeout pattern as the topbar hover. Gated off while
   // Ctrl-locked in either direction.
@@ -491,9 +501,9 @@ export function TopNavbar({
   }, [toolsSidebarOpen, rightSidebarWidth, onRightSidebarStateChange]);
 
   const openCommandHistorySidebar = React.useCallback(() => {
-    setToolsSidebarOpen(true);
+    pinToolsSidebarOpen();
     setCommandHistoryTabActive(true);
-  }, []);
+  }, [pinToolsSidebarOpen]);
 
   React.useEffect(() => {
     commandHistory.setOpenCommandHistory(openCommandHistorySidebar);
@@ -1482,6 +1492,7 @@ export function TopNavbar({
         isOpen={toolsSidebarOpen}
         isPersistedOpen={isToolsPersistedOpen}
         onTogglePersisted={setToolsSidebarOpen}
+        onPinPersistedOpen={pinToolsSidebarOpen}
         onHoverEnter={handleToolsHoverEnter}
         onHoverLeave={handleToolsHoverLeave}
         onSnippetExecute={handleSnippetExecute}

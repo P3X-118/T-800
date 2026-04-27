@@ -50,16 +50,9 @@ import {
 import { Input } from "@/components/ui/input.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { FolderCard } from "@/ui/desktop/navigation/hosts/FolderCard.tsx";
-import {
-  getSSHHosts,
-  getSSHFolders,
-  deleteSSHHost,
-} from "@/ui/main-axios.ts";
+import { getSSHHosts, getSSHFolders, deleteSSHHost } from "@/ui/main-axios.ts";
 import { useTabs } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
-import {
-  unlockCtrlLock,
-  useCtrlLockMode,
-} from "@/hooks/use-ctrl-lock.ts";
+import { unlockCtrlLock, useCtrlLockMode } from "@/hooks/use-ctrl-lock.ts";
 import type { SSHFolder, SSHHost } from "@/types/index.ts";
 
 interface SidebarProps {
@@ -94,13 +87,13 @@ export function LeftSidebar({
 }: SidebarProps): React.ReactElement {
   const { t } = useTranslation();
 
-  const [isSidebarOpenPersisted, setIsSidebarOpenPersisted] =
-    useState<boolean>(() => {
+  const [isSidebarOpenPersisted, setIsSidebarOpenPersisted] = useState<boolean>(
+    () => {
       const saved = localStorage.getItem("leftSidebarOpen");
       return saved !== null ? JSON.parse(saved) : true;
-    });
-  const [isSidebarHoverOpen, setIsSidebarHoverOpen] =
-    useState<boolean>(false);
+    },
+  );
+  const [isSidebarHoverOpen, setIsSidebarHoverOpen] = useState<boolean>(false);
   const ctrlLockMode = useCtrlLockMode("left");
   const ctrlLocked = ctrlLockMode !== "none";
   // Effective state.
@@ -123,6 +116,18 @@ export function LeftSidebar({
     unlockCtrlLock("left");
     setIsSidebarOpenPersisted(open);
     if (!open) setIsSidebarHoverOpen(false);
+  }, []);
+
+  // Pin-open without clearing the Ctrl lock. Used for incidental
+  // protections like "the user is opening a dropdown inside the
+  // sidebar — keep the panel from collapsing out from under them"
+  // and double-click-to-pin gestures. These shouldn't be treated as
+  // a deliberate exit from a Ctrl-locked mode (the bug was: clicking
+  // the user-profile button silently dropped the lock, and the next
+  // hover-leave then collapsed the sidebar).
+  const pinSidebarOpen = React.useCallback(() => {
+    setIsSidebarOpenPersisted(true);
+    setIsSidebarHoverOpen(false);
   }, []);
 
   // ── Hover-open handling for the closed sidebar ───────────────────────
@@ -710,8 +715,7 @@ export function LeftSidebar({
       const deletedIdSet = new Set(hostIds);
       const tabsToClose = tabList.filter(
         (t) =>
-          t.hostConfig?.id !== undefined &&
-          deletedIdSet.has(t.hostConfig.id),
+          t.hostConfig?.id !== undefined && deletedIdSet.has(t.hostConfig.id),
       );
       for (const tab of tabsToClose) {
         removeTab(tab.id);
@@ -790,7 +794,7 @@ export function LeftSidebar({
                 (e.target === e.currentTarget ||
                   !(e.target as HTMLElement).closest("button, a, input"))
               ) {
-                setIsSidebarOpen(true);
+                pinSidebarOpen();
               }
             }}
           >
@@ -808,9 +812,7 @@ export function LeftSidebar({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() =>
-                      setIsSidebarOpen(!isSidebarOpenPersisted)
-                    }
+                    onClick={() => setIsSidebarOpen(!isSidebarOpenPersisted)}
                     className="w-[28px] h-[28px]"
                     title={
                       isSidebarOpenPersisted
@@ -1075,20 +1077,15 @@ export function LeftSidebar({
                       forceExpandedKey={folderExpandKey}
                       searchActive={debouncedSearch.trim().length > 0}
                       isSelected={selectedFolders.has(folder)}
-                      onSelect={(mode) =>
-                        handleFolderSelect(folder, mode)
-                      }
+                      onSelect={(mode) => handleFolderSelect(folder, mode)}
                       onDeleteFolder={() => deleteFolders([folder])}
                       selectedCount={selectedFolders.size}
                       onDeleteSelected={
                         selectedFolders.size > 1
-                          ? () =>
-                              deleteFolders(Array.from(selectedFolders))
+                          ? () => deleteFolders(Array.from(selectedFolders))
                           : undefined
                       }
-                      onOpenInSplitView={() =>
-                        openFolderInSplitView(folder)
-                      }
+                      onOpenInSplitView={() => openFolderInSplitView(folder)}
                     />
                   );
                 })}
@@ -1107,8 +1104,10 @@ export function LeftSidebar({
                           // Clicking the user profile button while the
                           // sidebar is hover-open should pin it open so it
                           // doesn't collapse out from under the dropdown
-                          // the user is about to interact with.
-                          setIsSidebarOpen(true);
+                          // the user is about to interact with. Use the
+                          // pin variant so the Ctrl lock isn't silently
+                          // cleared as a side effect.
+                          pinSidebarOpen();
                         }}
                       >
                         <User2 /> {username ? username : t("common.logout")}
