@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -48,6 +48,10 @@ interface TabProps {
   onSplitAll?: () => void;
   onDuplicate?: () => void;
   isIdle?: boolean;
+  // External rename trigger. When this changes to a non-zero value
+  // (e.g. from the Ctrl+X shortcut wired up in Terminal/TabContext),
+  // the Tab enters edit mode using the current displayTitle.
+  renameSignal?: number;
 }
 
 export function Tab({
@@ -75,6 +79,7 @@ export function Tab({
   onSplitAll,
   onDuplicate,
   isIdle = false,
+  renameSignal = 0,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{
@@ -102,6 +107,50 @@ export function Tab({
       window.removeEventListener("contextmenu", close);
     };
   }, [contextMenu]);
+
+  // Resolved label for this tab — same fallbacks the per-branch render
+  // uses, hoisted so the rename-signal effect below can pre-populate
+  // the edit input regardless of which branch eventually renders.
+  const resolvedTitle = useMemo(() => {
+    if (title) return title;
+    switch (tabType) {
+      case "server_stats":
+        return t("nav.serverStats");
+      case "file_manager":
+        return t("nav.fileManager");
+      case "tunnel":
+        return t("nav.tunnels");
+      case "docker":
+        return t("nav.docker");
+      case "user_profile":
+        return t("nav.userProfile");
+      case "rdp":
+      case "vnc":
+      case "telnet":
+        return tabType.toUpperCase();
+      case "ssh_manager":
+        return t("nav.sshManager");
+      case "admin":
+        return t("nav.admin");
+      case "network_graph":
+        return t("dashboard.networkGraph");
+      default:
+        return t("nav.terminal");
+    }
+  }, [title, tabType, t]);
+
+  // External rename trigger (e.g. Ctrl+X inside a focused terminal).
+  // Only acts on rename-capable tab types — onRename being defined is
+  // the same gate the context-menu rename uses.
+  useEffect(() => {
+    if (renameSignal > 0 && onRename) {
+      setEditValue(resolvedTitle);
+      setIsEditing(true);
+    }
+    // resolvedTitle/onRename intentionally omitted: only the signal
+    // edge should re-enter edit mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renameSignal]);
 
   const handleCopyPassword = async (e: React.MouseEvent) => {
     e.stopPropagation();

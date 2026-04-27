@@ -108,6 +108,12 @@ interface TabContextType {
     target?: { tabId: number; position: DropPosition },
   ) => void;
   cancelTabDragToSplit: () => void;
+  // Bumped each time something requests a tab rename (e.g. Ctrl+X
+  // shortcut from inside a focused terminal). The Tab component
+  // observes (renameRequest.tabId, renameRequest.nonce) and enters
+  // edit mode when its tabId matches.
+  renameRequest: { tabId: number; nonce: number } | null;
+  requestRenameTab: (tabId: number) => void;
 }
 
 const TabContext = createContext<TabContextType | undefined>(undefined);
@@ -217,6 +223,13 @@ export function TabProvider({ children }: TabProviderProps) {
     }
     return 1;
   });
+  const [renameRequest, setRenameRequest] = useState<{
+    tabId: number;
+    nonce: number;
+  } | null>(null);
+  const requestRenameTab = useCallback((tabId: number) => {
+    setRenameRequest({ tabId, nonce: Date.now() });
+  }, []);
   const [splitLayout, setSplitLayoutStateRaw] =
     useState<SplitLayoutNode | null>(() => {
       if (!isPersistenceEnabled()) return null;
@@ -913,6 +926,8 @@ export function TabProvider({ children }: TabProviderProps) {
       setDragOverTerminalArea,
       executeDragSplit,
       cancelTabDragToSplit,
+      renameRequest,
+      requestRenameTab,
     }),
     [
       tabs,
@@ -937,6 +952,8 @@ export function TabProvider({ children }: TabProviderProps) {
       setDragOverTerminalArea,
       executeDragSplit,
       cancelTabDragToSplit,
+      renameRequest,
+      requestRenameTab,
     ],
   );
 

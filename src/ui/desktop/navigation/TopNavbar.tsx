@@ -81,6 +81,7 @@ export function TopNavbar({
     setSplitLayout,
     executeDragSplit,
     addTabAfter,
+    renameRequest,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -104,6 +105,7 @@ export function TopNavbar({
       afterTabId: number,
       tab: { type: string; [key: string]: unknown },
     ) => number;
+    renameRequest: { tabId: number; nonce: number } | null;
   };
   const leftPosition =
     state === "collapsed" ? "26px" : "calc(var(--sidebar-width) + 8px)";
@@ -1163,6 +1165,11 @@ export function TopNavbar({
                   isDragOver={false}
                   hostConfig={tab.hostConfig}
                   isIdle={tab.isIdle}
+                  renameSignal={
+                    renameRequest && renameRequest.tabId === tab.id
+                      ? renameRequest.nonce
+                      : 0
+                  }
                   onRename={
                     tab.type !== "home"
                       ? (newTitle: string) =>

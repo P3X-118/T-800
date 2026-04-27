@@ -117,6 +117,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const { theme: appTheme } = useTheme();
     const { addLog, isExpanded: isConnectionLogExpanded } = useConnectionLog();
     const tabsCtx = useTabsOptional();
+    // The xterm key handler is attached once per terminal mount with a
+    // [terminal] dep array, so it captures `tabsCtx` at attach time.
+    // Route through a ref so Ctrl+X always sees the current tabs list
+    // and requestRenameTab function.
+    const tabsCtxRef = useRef(tabsCtx);
+    useEffect(() => {
+      tabsCtxRef.current = tabsCtx;
+    }, [tabsCtx]);
     const setTabIdle = useCallback(
       (idle: boolean) => {
         if (!tabsCtx) return;
@@ -2002,6 +2010,33 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           readTextFromClipboard().then((text) => {
             if (text) terminal.paste(text);
           });
+          return false;
+        }
+
+        // Ctrl+X (no other modifiers) inside a focused terminal opens
+        // the tab's rename input. This shadows readline/emacs/nano's
+        // Ctrl+X — accepted tradeoff per the user's explicit request.
+        // Shift+Ctrl+X / Alt+Ctrl+X still pass through to the PTY.
+        if (
+          e.ctrlKey &&
+          !e.shiftKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          e.key.toLowerCase() === "x"
+        ) {
+          if (e.type !== "keydown") return false;
+          e.preventDefault();
+          e.stopPropagation();
+          const ctx = tabsCtxRef.current;
+          if (ctx) {
+            const match = ctx.tabs.find(
+              (tt) =>
+                tt.type === "terminal" &&
+                tt.hostConfig?.id === hostConfig.id &&
+                tt.instanceId === hostConfig.instanceId,
+            );
+            if (match) ctx.requestRenameTab(match.id);
+          }
           return false;
         }
 
