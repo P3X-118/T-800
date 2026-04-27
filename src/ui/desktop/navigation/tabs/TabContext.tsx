@@ -21,6 +21,7 @@ import {
   insertAtRoot as insertAtRootOp,
   insertAdjacentRowOrColumn as insertAdjacentRowOrColumnOp,
   pruneLayout,
+  setSizesAtPath,
 } from "./splitLayout.js";
 import {
   tabsKey,
@@ -114,6 +115,11 @@ interface TabContextType {
   // edit mode when its tabId matches.
   renameRequest: { tabId: number; nonce: number } | null;
   requestRenameTab: (tabId: number) => void;
+  // Persists the user's manual resize. `path` is the dash-joined index
+  // path of the split node ("" for root). `sizes` is the percent array
+  // from react-resizable-panels' onLayout callback. The store
+  // throttles writes via splitLayout's existing localStorage effect.
+  setNodeSizes: (path: string, sizes: number[]) => void;
 }
 
 const TabContext = createContext<TabContextType | undefined>(undefined);
@@ -229,6 +235,12 @@ export function TabProvider({ children }: TabProviderProps) {
   } | null>(null);
   const requestRenameTab = useCallback((tabId: number) => {
     setRenameRequest({ tabId, nonce: Date.now() });
+  }, []);
+
+  // Capture per-group sizes from react-resizable-panels into the
+  // layout tree so a manual drag survives re-renders and reloads.
+  const setNodeSizes = useCallback((path: string, sizes: number[]) => {
+    setSplitLayoutStateRaw((prev) => setSizesAtPath(prev, path, sizes));
   }, []);
   const [splitLayout, setSplitLayoutStateRaw] =
     useState<SplitLayoutNode | null>(() => {
@@ -928,6 +940,7 @@ export function TabProvider({ children }: TabProviderProps) {
       cancelTabDragToSplit,
       renameRequest,
       requestRenameTab,
+      setNodeSizes,
     }),
     [
       tabs,
@@ -954,6 +967,7 @@ export function TabProvider({ children }: TabProviderProps) {
       cancelTabDragToSplit,
       renameRequest,
       requestRenameTab,
+      setNodeSizes,
     ],
   );
 

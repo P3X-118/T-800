@@ -17,7 +17,46 @@ export type SplitLayoutNode =
       type: "split";
       direction: SplitDirection;
       children: SplitLayoutNode[];
+      // Optional per-child sizes in percent (sums to ~100). Captured
+      // from react-resizable-panels' onLayout so a manual resize
+      // survives re-renders, remounts, and reloads. When absent, the
+      // renderer falls back to an even split.
+      sizes?: number[];
     };
+
+// Walks `tree` and replaces the split node at the given path with one
+// whose `sizes` are the given array. Path is the same dash-joined
+// child-index format used in AppView ("" = root, "0" = root.children[0],
+// "0-1" = root.children[0].children[1], etc.).
+export function setSizesAtPath(
+  tree: SplitLayoutNode | null,
+  path: string,
+  sizes: number[],
+): SplitLayoutNode | null {
+  if (!tree || tree.type === "leaf") return tree;
+  const indices = path === "" ? [] : path.split("-").map((s) => Number(s));
+  const update = (node: SplitLayoutNode, depth: number): SplitLayoutNode => {
+    if (node.type === "leaf") return node;
+    if (depth === indices.length) {
+      // Reached the target group. Only persist if the count matches —
+      // a stale path from a previous tree shouldn't overwrite siblings.
+      if (sizes.length !== node.children.length) return node;
+      const same =
+        node.sizes &&
+        node.sizes.length === sizes.length &&
+        node.sizes.every((v, i) => Math.abs(v - sizes[i]) < 0.01);
+      if (same) return node;
+      return { ...node, sizes: sizes.slice() };
+    }
+    const idx = indices[depth];
+    if (idx < 0 || idx >= node.children.length) return node;
+    const newChildren = node.children.slice();
+    newChildren[idx] = update(node.children[idx], depth + 1);
+    if (newChildren[idx] === node.children[idx]) return node;
+    return { ...node, children: newChildren };
+  };
+  return update(tree, 0);
+}
 
 export function isLeaf(
   node: SplitLayoutNode,
@@ -31,10 +70,7 @@ export function getLeafIds(node: SplitLayoutNode | null): number[] {
   return node.children.flatMap(getLeafIds);
 }
 
-export function findLeaf(
-  node: SplitLayoutNode,
-  tabId: number,
-): boolean {
+export function findLeaf(node: SplitLayoutNode, tabId: number): boolean {
   if (node.type === "leaf") return node.tabId === tabId;
   return node.children.some((c) => findLeaf(c, tabId));
 }
@@ -59,19 +95,23 @@ export function defaultLayoutFromIds(ids: number[]): SplitLayoutNode | null {
   let rows: number[][];
   if (n === 2) rows = [[ids[0], ids[1]]];
   else if (n === 3) rows = [[ids[0], ids[1]], [ids[2]]];
-  else if (n === 4) rows = [[ids[0], ids[1]], [ids[2], ids[3]]];
-  else if (n === 5) rows = [[ids[0], ids[1]], [ids[2], ids[3], ids[4]]];
+  else if (n === 4)
+    rows = [
+      [ids[0], ids[1]],
+      [ids[2], ids[3]],
+    ];
+  else if (n === 5)
+    rows = [
+      [ids[0], ids[1]],
+      [ids[2], ids[3], ids[4]],
+    ];
   else if (n === 6)
     rows = [
       [ids[0], ids[1], ids[2]],
       [ids[3], ids[4], ids[5]],
     ];
   else if (n === 7)
-    rows = [
-      [ids[0], ids[1], ids[2]],
-      [ids[3], ids[4], ids[5]],
-      [ids[6]],
-    ];
+    rows = [[ids[0], ids[1], ids[2]], [ids[3], ids[4], ids[5]], [ids[6]]];
   else if (n === 8)
     rows = [
       [ids[0], ids[1], ids[2]],
@@ -161,9 +201,7 @@ export function splitLeaf(
     if (matchingChildIdx !== -1 && node.direction === newDir) {
       // Flatten: insert newLeaf as a sibling of the matching child
       const newChildren = [...node.children];
-      const insertIdx = insertBefore
-        ? matchingChildIdx
-        : matchingChildIdx + 1;
+      const insertIdx = insertBefore ? matchingChildIdx : matchingChildIdx + 1;
       newChildren.splice(insertIdx, 0, newLeaf);
       return { ...node, children: newChildren };
     }
@@ -313,10 +351,7 @@ export function insertAdjacentRowOrColumn(
     ? containerIdxInParent
     : containerIdxInParent + 1;
 
-  function rebuild(
-    node: SplitLayoutNode,
-    depth: number,
-  ): SplitLayoutNode {
+  function rebuild(node: SplitLayoutNode, depth: number): SplitLayoutNode {
     if (depth === containerDepth - 1) {
       if (node.type !== "split") return node;
       const newChildren = [...node.children];
@@ -343,10 +378,7 @@ export function insertAdjacentRowOrColumn(
  * container), or the root if no vertical ancestor exists. Returns an empty
  * array if `tabId` isn't in the tree.
  */
-export function getRowLeafIds(
-  tree: SplitLayoutNode,
-  tabId: number,
-): number[] {
+export function getRowLeafIds(tree: SplitLayoutNode, tabId: number): number[] {
   function findPath(
     node: SplitLayoutNode,
     target: number,
@@ -478,10 +510,7 @@ export function maximizeAlongAxis(
     targetDepth: number,
     replacement: SplitLayoutNode,
   ): SplitLayoutNode => {
-    function rebuild(
-      node: SplitLayoutNode,
-      depth: number,
-    ): SplitLayoutNode {
+    function rebuild(node: SplitLayoutNode, depth: number): SplitLayoutNode {
       if (depth === targetDepth) return replacement;
       if (node.type === "leaf") return node;
       const childIdx = path[depth];

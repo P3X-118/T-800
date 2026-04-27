@@ -174,6 +174,7 @@ export function AppView({
     addToSplitRoot,
     cancelTabDragToSplit,
     removeFromSplitLayout,
+    setNodeSizes,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -212,6 +213,7 @@ export function AppView({
     ) => void;
     cancelTabDragToSplit: () => void;
     removeFromSplitLayout: (tabId: number) => void;
+    setNodeSizes: (path: string, sizes: number[]) => void;
   };
   const { state: sidebarState } = useSidebar();
   const { theme: appTheme } = useTheme();
@@ -1457,18 +1459,22 @@ export function AppView({
       zIndex: 12,
       background: "var(--border-base)",
     } as React.CSSProperties;
-    const commonGroupProps: {
-      onLayout: () => void;
-      onResize: () => void;
-    } = {
-      onLayout: scheduleMeasureAndFit,
-      onResize: scheduleMeasureAndFit,
-    };
 
     const firstLeafId = (() => {
       const ids = allSplitScreenTab;
       return ids.length > 0 ? ids[0] : null;
     })();
+
+    // Build the per-group onLayout handler. We bind the path so the
+    // store knows which split node to update. The handler is invoked
+    // on every drag tick by react-resizable-panels — setNodeSizes
+    // short-circuits when the values haven't actually changed, so the
+    // re-render storm during drag is bounded to one update per
+    // distinct layout.
+    const makeOnLayout = (groupPath: string) => (sizes: number[]) => {
+      setNodeSizes(groupPath, sizes);
+      scheduleMeasureAndFit();
+    };
 
     const renderNode = (
       node: SplitLayoutNode,
@@ -1476,8 +1482,15 @@ export function AppView({
       siblingCount: number,
       orderIndex: number,
       isRoot: boolean,
+      parentSizes: number[] | undefined,
+      indexInParent: number,
     ): React.ReactNode => {
-      const defaultSize = Math.round(100 / siblingCount);
+      // Prefer the parent's persisted size for this child; fall back
+      // to even split for new layouts that haven't been resized yet.
+      const defaultSize =
+        parentSizes && parentSizes[indexInParent] != null
+          ? parentSizes[indexInParent]
+          : Math.round(100 / siblingCount);
 
       if (node.type === "leaf") {
         const tab = terminalTabs.find((t: TabData) => t.id === node.tabId);
@@ -1508,6 +1521,8 @@ export function AppView({
 
       const groupKey = isRoot ? String(resetKey) : `${path}-${resetKey}`;
       const groupId = isRoot ? `main-${node.direction}` : `group-${path}`;
+      const groupPath = isRoot ? "" : path;
+      const childSizes = node.sizes;
 
       const groupContent = (
         <ResizablePrimitive.PanelGroup
@@ -1515,7 +1530,7 @@ export function AppView({
           direction={node.direction}
           className="h-full w-full"
           id={groupId}
-          {...commonGroupProps}
+          onLayout={makeOnLayout(groupPath)}
         >
           {node.children.flatMap((child, i) => {
             const childPath = isRoot ? String(i) : `${path}-${i}`;
@@ -1525,6 +1540,8 @@ export function AppView({
               node.children.length,
               i + 1,
               false,
+              childSizes,
+              i,
             );
             if (i === 0) return [panel];
             return [
@@ -1556,7 +1573,7 @@ export function AppView({
 
     return (
       <div className="absolute inset-0 z-[10] pointer-events-none">
-        {renderNode(splitLayout, "", 1, 1, true)}
+        {renderNode(splitLayout, "", 1, 1, true, undefined, 0)}
       </div>
     );
   };
