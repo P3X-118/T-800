@@ -24,10 +24,7 @@ import { WorkspaceMenu } from "@/ui/desktop/navigation/WorkspaceMenu.tsx";
 import { SSHToolsSidebar } from "@/ui/desktop/apps/tools/SSHToolsSidebar.tsx";
 import { useCommandHistory } from "@/ui/desktop/apps/features/terminal/command-history/CommandHistoryContext.tsx";
 import { QuickConnectDialog } from "@/ui/desktop/navigation/dialogs/QuickConnectDialog.tsx";
-import {
-  unlockCtrlLock,
-  useCtrlLockMode,
-} from "@/hooks/use-ctrl-lock.ts";
+import { unlockCtrlLock, useCtrlLockMode } from "@/hooks/use-ctrl-lock.ts";
 
 interface TabData {
   id: number;
@@ -93,7 +90,10 @@ export function TopNavbar({
     allSplitScreenTab: number[];
     reorderTabs: (fromIndex: number, toIndex: number) => void;
     updateTab: (tabId: number, updates: Record<string, unknown>) => void;
-    tabDragToSplit: { draggedTabId: number; isOverTerminalArea: boolean } | null;
+    tabDragToSplit: {
+      draggedTabId: number;
+      isOverTerminalArea: boolean;
+    } | null;
     startTabDragToSplit: (tabId: number) => void;
     cancelTabDragToSplit: () => void;
     setSplitScreenTabs: (tabIds: number[]) => void;
@@ -187,9 +187,15 @@ export function TopNavbar({
         : `${host.username}@${host.ip}:${host.port}`;
       return (
         label.toLowerCase().includes(q) ||
-        String(host.ip || "").toLowerCase().includes(q) ||
-        String(host.username || "").toLowerCase().includes(q) ||
-        String(host.name || "").toLowerCase().includes(q)
+        String(host.ip || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(host.username || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(host.name || "")
+          .toLowerCase()
+          .includes(q)
       );
     });
   }, [emptyAreaHosts, emptyAreaFilter]);
@@ -376,10 +382,7 @@ export function TopNavbar({
           localStorage.getItem("t800_savedSplitViews") || "[]",
         );
         existing.push(saved);
-        localStorage.setItem(
-          "t800_savedSplitViews",
-          JSON.stringify(existing),
-        );
+        localStorage.setItem("t800_savedSplitViews", JSON.stringify(existing));
         import("sonner").then((m) =>
           m.toast.success(`Split view "${name}" saved`),
         );
@@ -440,22 +443,17 @@ export function TopNavbar({
               JSON.stringify(existing),
             );
             import("sonner").then((m) =>
-          m.toast.success(`Split view "${name}" saved`),
-        );
+              m.toast.success(`Split view "${name}" saved`),
+            );
           } catch {
             import("sonner").then((m) =>
-          m.toast.error("Failed to save split view"),
-        );
+              m.toast.error("Failed to save split view"),
+            );
           }
         }, 50);
       }
     },
-    [
-      persistSplitViewName,
-      splitGroupTabs,
-      splitLayout,
-      allSplitScreenTab,
-    ],
+    [persistSplitViewName, splitGroupTabs, splitLayout, allSplitScreenTab],
   );
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
     const saved = localStorage.getItem("rightSidebarWidth");
@@ -527,9 +525,7 @@ export function TopNavbar({
   // A set of non-split top-row tab IDs the user has ctrl-clicked. Visible
   // as a white underline. Right-clicking any selected tab shows a menu to
   // add them all to the split view or close them.
-  const [selectedTabIds, setSelectedTabIds] = useState<Set<number>>(
-    new Set(),
-  );
+  const [selectedTabIds, setSelectedTabIds] = useState<Set<number>>(new Set());
   const [multiSelectContextMenu, setMultiSelectContextMenu] = useState<{
     x: number;
     y: number;
@@ -556,10 +552,7 @@ export function TopNavbar({
       for (const id of prev) {
         if (
           tabIdSet.has(id) &&
-          !(
-            Array.isArray(allSplitScreenTab) &&
-            allSplitScreenTab.includes(id)
-          )
+          !(Array.isArray(allSplitScreenTab) && allSplitScreenTab.includes(id))
         ) {
           valid.add(id);
         }
@@ -1120,9 +1113,7 @@ export function TopNavbar({
                   isActive={isActive}
                   isSplit={isSplit}
                   isMultiSelected={
-                    isSplittable &&
-                    !isSplit &&
-                    selectedTabIds.has(tab.id)
+                    isSplittable && !isSplit && selectedTabIds.has(tab.id)
                   }
                   onActivate={(ctrlKey?: boolean) =>
                     handleTabActivate(tab.id, !!ctrlKey)
@@ -1171,6 +1162,7 @@ export function TopNavbar({
                   isDragging={isDraggingThisTab}
                   isDragOver={false}
                   hostConfig={tab.hostConfig}
+                  isIdle={tab.isIdle}
                   onRename={
                     tab.type !== "home"
                       ? (newTitle: string) =>
@@ -1306,7 +1298,8 @@ export function TopNavbar({
                             e.stopPropagation();
                             if (e.key === "Enter") {
                               const trimmed = splitPillEditValue.trim();
-                              if (trimmed) persistSplitViewNameWithSave(trimmed);
+                              if (trimmed)
+                                persistSplitViewNameWithSave(trimmed);
                               setSplitPillEditing(false);
                             } else if (e.key === "Escape") {
                               setSplitPillEditing(false);

@@ -820,8 +820,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
         const opksshData = data as { hostId: number };
         try {
           const { startOPKSSHAuth } = await import("./opkssh-auth.js");
-          const { getRequestOrigin } =
-            await import("../utils/request-origin.js");
+          const { getRequestOrigin } = await import(
+            "../utils/request-origin.js"
+          );
           const db = getDb();
           const hostRow = await db
             .select()
@@ -1078,8 +1079,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
       if (ownerId && userId !== ownerId) {
         try {
-          const { SharedCredentialManager } =
-            await import("../utils/shared-credential-manager.js");
+          const { SharedCredentialManager } = await import(
+            "../utils/shared-credential-manager.js"
+          );
           const sharedCredManager = SharedCredentialManager.getInstance();
           const sharedCred = await sharedCredManager.getSharedCredentialForUser(
             id,
@@ -1428,8 +1430,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               const utf8String = utf8Decoder.write(data);
               const hasReplacementChar = utf8String.includes("\uFFFD");
               const isBinaryData =
-                hasReplacementChar &&
-                !data.includes(0xef) // U+FFFD in UTF-8 is EF BF BD
+                hasReplacementChar && !data.includes(0xef) // U+FFFD in UTF-8 is EF BF BD
                   ? true
                   : hasReplacementChar &&
                     (() => {
@@ -1438,15 +1439,12 @@ wss.on("connection", async (ws: WebSocket, req) => {
                       const efbfbd = Buffer.from([0xef, 0xbf, 0xbd]);
                       let idx = 0;
                       let genuine = 0;
-                      while (
-                        (idx = data.indexOf(efbfbd, idx)) !== -1
-                      ) {
+                      while ((idx = data.indexOf(efbfbd, idx)) !== -1) {
                         genuine++;
                         idx += 3;
                       }
-                      const replacements = (
-                        utf8String.match(/\uFFFD/g) || []
-                      ).length;
+                      const replacements = (utf8String.match(/\uFFFD/g) || [])
+                        .length;
                       return replacements > genuine;
                     })();
 
@@ -1503,7 +1501,10 @@ wss.on("connection", async (ws: WebSocket, req) => {
             const session = sessionManager.getSession(boundSessionId);
             // Drain any residual buffered UTF-8 bytes from the decoder.
             const trailing = utf8Decoder.end();
-            if (trailing && session?.attachedWs?.readyState === WebSocket.OPEN) {
+            if (
+              trailing &&
+              session?.attachedWs?.readyState === WebSocket.OPEN
+            ) {
               session.attachedWs.send(
                 JSON.stringify({ type: "data", data: trailing }),
               );

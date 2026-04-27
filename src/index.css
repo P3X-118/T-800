@@ -293,3 +293,24 @@
 .skinny-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+@keyframes t800-tab-idle-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.t800-tab-idle-dot {
+  animation: t800-tab-idle-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t800-tab-idle-dot {
+    animation: none;
+    opacity: 0.85;
+  }
+}

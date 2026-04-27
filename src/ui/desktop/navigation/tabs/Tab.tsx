@@ -47,6 +47,7 @@ interface TabProps {
   onAddToSplit?: () => void;
   onSplitAll?: () => void;
   onDuplicate?: () => void;
+  isIdle?: boolean;
 }
 
 export function Tab({
@@ -73,6 +74,7 @@ export function Tab({
   onAddToSplit,
   onSplitAll,
   onDuplicate,
+  isIdle = false,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{
@@ -300,6 +302,12 @@ export function Tab({
             ) : (
               <TerminalIcon className="h-4 w-4 flex-shrink-0" />
             )}
+            {isIdle && !isActive && (
+              <span
+                className="t800-tab-idle-dot h-1.5 w-1.5 rounded-full bg-foreground/60 flex-shrink-0"
+                aria-hidden="true"
+              />
+            )}
             {isEditing ? (
               <input
                 ref={editInputRef}
@@ -334,111 +342,111 @@ export function Tab({
           </div>
 
           {hasPassword && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleCopyPassword}
-            title={getPasswordButtonTitle()}
-          >
-            <Key className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        )}
-
-        {canSplit && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-6 w-6", disableSplit && "opacity-50")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!disableSplit && onSplit) onSplit();
-            }}
-            disabled={disableSplit}
-            title={
-              disableSplit ? t("nav.cannotSplitTab") : t("nav.splitScreen")
-            }
-          >
-            <SeparatorVertical
-              className={cn(
-                "h-4 w-4",
-                isSplit ? "text-foreground" : "text-muted-foreground",
-              )}
-            />
-          </Button>
-        )}
-
-        {canClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-6 w-6", disableClose && "opacity-50")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!disableClose && onClose) onClose();
-            }}
-            disabled={disableClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
-      {contextMenu && (
-        <div
-          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-            onClick={() => {
-              setEditValue(displayTitle);
-              setIsEditing(true);
-              setContextMenu(null);
-            }}
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </button>
-          {onDuplicate && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onDuplicate();
-                setContextMenu(null);
-              }}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={handleCopyPassword}
+              title={getPasswordButtonTitle()}
             >
-              <Copy className="w-3.5 h-3.5" />
-              Duplicate
-            </button>
+              <Key className="h-4 w-4 text-muted-foreground" />
+            </Button>
           )}
-          {onAddToSplit && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onAddToSplit();
-                setContextMenu(null);
+
+          {canSplit && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-6 w-6", disableSplit && "opacity-50")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disableSplit && onSplit) onSplit();
               }}
+              disabled={disableSplit}
+              title={
+                disableSplit ? t("nav.cannotSplitTab") : t("nav.splitScreen")
+              }
             >
-              <SeparatorVertical className="w-3.5 h-3.5" />
-              Add to Split View
-            </button>
+              <SeparatorVertical
+                className={cn(
+                  "h-4 w-4",
+                  isSplit ? "text-foreground" : "text-muted-foreground",
+                )}
+              />
+            </Button>
           )}
-          {onSplitAll && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onSplitAll();
-                setContextMenu(null);
+
+          {canClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-6 w-6", disableClose && "opacity-50")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disableClose && onClose) onClose();
               }}
+              disabled={disableClose}
             >
-              <Columns2 className="w-3.5 h-3.5" />
-              Add all tabs to Split View
-            </button>
+              <X className="h-4 w-4" />
+            </Button>
           )}
         </div>
-      )}
+
+        {contextMenu && (
+          <div
+            className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                setEditValue(displayTitle);
+                setIsEditing(true);
+                setContextMenu(null);
+              }}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Rename
+            </button>
+            {onDuplicate && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onDuplicate();
+                  setContextMenu(null);
+                }}
+              >
+                <Copy className="w-3.5 h-3.5" />
+                Duplicate
+              </button>
+            )}
+            {onAddToSplit && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onAddToSplit();
+                  setContextMenu(null);
+                }}
+              >
+                <SeparatorVertical className="w-3.5 h-3.5" />
+                Add to Split View
+              </button>
+            )}
+            {onSplitAll && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onSplitAll();
+                  setContextMenu(null);
+                }}
+              >
+                <Columns2 className="w-3.5 h-3.5" />
+                Add all tabs to Split View
+              </button>
+            )}
+          </div>
+        )}
       </>
     );
   }

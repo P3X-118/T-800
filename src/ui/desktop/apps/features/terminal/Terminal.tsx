@@ -47,6 +47,7 @@ import {
   useConnectionLog,
 } from "@/ui/desktop/navigation/connection-log/ConnectionLogContext.tsx";
 import { ConnectionLog } from "@/ui/desktop/navigation/connection-log/ConnectionLog.tsx";
+import { useTabsOptional } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 import { toast } from "sonner";
 
 interface HostConfig {
@@ -115,6 +116,28 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const { confirmWithToast } = useConfirmation();
     const { theme: appTheme } = useTheme();
     const { addLog, isExpanded: isConnectionLogExpanded } = useConnectionLog();
+    const tabsCtx = useTabsOptional();
+    const setTabIdle = useCallback(
+      (idle: boolean) => {
+        if (!tabsCtx) return;
+        const match = tabsCtx.tabs.find(
+          (t) =>
+            t.type === "terminal" &&
+            t.hostConfig?.id === hostConfig.id &&
+            t.instanceId === hostConfig.instanceId,
+        );
+        if (!match) return;
+        // Suppress pulse for the first 5s after the tab loses focus so
+        // quick tab switches don't strobe.
+        if (idle && match.lastBlurAt && Date.now() - match.lastBlurAt < 5000) {
+          return;
+        }
+        if (Boolean(match.isIdle) !== idle) {
+          tabsCtx.updateTab(match.id, { isIdle: idle });
+        }
+      },
+      [tabsCtx, hostConfig.id, hostConfig.instanceId],
+    );
 
     const config = { ...DEFAULT_TERMINAL_CONFIG, ...hostConfig.terminalConfig };
 
@@ -360,6 +383,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     useEffect(() => {
       isVisibleRef.current = isVisible;
     }, [isVisible]);
+
+    // When this terminal tab becomes hidden, stamp lastBlurAt so the
+    // idle pulse is suppressed for ~5s after a context switch. When it
+    // becomes visible again, clear any stale idle flag.
+    useEffect(() => {
+      if (!tabsCtx) return;
+      const match = tabsCtx.tabs.find(
+        (t) =>
+          t.type === "terminal" &&
+          t.hostConfig?.id === hostConfig.id &&
+          t.instanceId === hostConfig.instanceId,
+      );
+      if (!match) return;
+      if (isVisible) {
+        if (match.isIdle) tabsCtx.updateTab(match.id, { isIdle: false });
+      } else {
+        tabsCtx.updateTab(match.id, { lastBlurAt: Date.now() });
+      }
+    }, [isVisible, tabsCtx, hostConfig.id, hostConfig.instanceId]);
 
     useEffect(() => {
       const checkAuth = () => {
@@ -899,6 +941,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }),
           );
         }
+        // BEL (\x07) from a TUI is a strong "I want attention" signal —
+        // some installers/prompts ring it when waiting on input, so
+        // promote a bell into an idle pulse even if output is still
+        // flowing.
+        terminal.onBell(() => {
+          setTabIdle(true);
+        });
         terminal.onData((data) => {
           // Pass everything through, including CSI size report
           // responses (\x1b[<n>;<h>;<w>t) that xterm emits when a
@@ -935,8 +984,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 terminal.write(bytes);
               } else {
                 const syntaxHighlightingEnabled =
-                  localStorage.getItem("terminalSyntaxHighlighting") ===
-                  "true";
+                  localStorage.getItem("terminalSyntaxHighlighting") === "true";
 
                 const outputData = syntaxHighlightingEnabled
                   ? highlightTerminalOutput(msg.data)
@@ -1116,7 +1164,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 );
               }
             }, 100);
+          } else if (msg.type === "idle") {
+            setTabIdle(true);
+          } else if (msg.type === "active") {
+            setTabIdle(false);
           } else if (msg.type === "disconnected") {
+            setTabIdle(false);
             wasDisconnectedBySSH.current = true;
             setIsConnected(false);
             if (terminal) {
@@ -1858,7 +1911,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
 
           const persistenceEnabled =
-            localStorage.getItem("enableTerminalSessionPersistence") !== "false";
+            localStorage.getItem("enableTerminalSessionPersistence") !==
+            "false";
           if (
             !persistenceEnabled &&
             sessionIdRef.current &&
@@ -1894,10 +1948,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           !e.ctrlKey &&
           !e.shiftKey &&
           !e.metaKey &&
-          (e.key === "h" ||
-            e.key === "j" ||
-            e.key === "k" ||
-            e.key === "l")
+          (e.key === "h" || e.key === "j" || e.key === "k" || e.key === "l")
         ) {
           return false;
         }

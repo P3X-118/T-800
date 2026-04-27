@@ -120,6 +120,14 @@ export function useTabs() {
   return context;
 }
 
+// Returns the tab context if available, or undefined when used outside
+// a TabProvider (e.g. Terminal embedded in dashboard cards). Use this
+// when the caller wants to optionally interact with tabs without
+// requiring the provider to be present.
+export function useTabsOptional() {
+  return useContext(TabContext);
+}
+
 interface TabProviderProps {
   children: ReactNode;
 }
@@ -234,9 +242,9 @@ export function TabProvider({ children }: TabProviderProps) {
       setSplitLayoutStateRaw((prev) => {
         const next =
           typeof updater === "function"
-            ? (updater as (
-                p: SplitLayoutNode | null,
-              ) => SplitLayoutNode | null)(prev)
+            ? (
+                updater as (p: SplitLayoutNode | null) => SplitLayoutNode | null
+              )(prev)
             : updater;
         if (!next) return null;
         if (next.type === "leaf") return null;
@@ -677,12 +685,9 @@ export function TabProvider({ children }: TabProviderProps) {
     });
   }, []);
 
-  const setSplitLayout = useCallback(
-    (layout: SplitLayoutNode | null) => {
-      setSplitLayoutState(layout);
-    },
-    [],
-  );
+  const setSplitLayout = useCallback((layout: SplitLayoutNode | null) => {
+    setSplitLayoutState(layout);
+  }, []);
 
   const splitPanelAt = useCallback(
     (targetTabId: number, newTabId: number, position: DropPosition) => {
@@ -730,10 +735,7 @@ export function TabProvider({ children }: TabProviderProps) {
         }
         if (!getLeafIds(cleaned).includes(targetTabId)) {
           // Target is not in layout — fall back to appending via default
-          return defaultLayoutFromIds([
-            ...getLeafIds(cleaned),
-            newTabId,
-          ]);
+          return defaultLayoutFromIds([...getLeafIds(cleaned), newTabId]);
         }
         if (isMax) {
           const axis: "row" | "column" =
@@ -759,10 +761,7 @@ export function TabProvider({ children }: TabProviderProps) {
   );
 
   const addToSplitRoot = useCallback(
-    (
-      newTabId: number,
-      position: "top" | "right" | "bottom" | "left",
-    ) => {
+    (newTabId: number, position: "top" | "right" | "bottom" | "left") => {
       setSplitLayoutState((prevLayout) => {
         // Remove the tab first if it's already in the layout, so the
         // outer-edge drop becomes a true reposition.
@@ -776,15 +775,12 @@ export function TabProvider({ children }: TabProviderProps) {
     [],
   );
 
-  const swapInSplitLayout = useCallback(
-    (aTabId: number, bTabId: number) => {
-      setSplitLayoutState((prevLayout) => {
-        if (!prevLayout) return prevLayout;
-        return swapLeavesOp(prevLayout, aTabId, bTabId);
-      });
-    },
-    [],
-  );
+  const swapInSplitLayout = useCallback((aTabId: number, bTabId: number) => {
+    setSplitLayoutState((prevLayout) => {
+      if (!prevLayout) return prevLayout;
+      return swapLeavesOp(prevLayout, aTabId, bTabId);
+    });
+  }, []);
 
   const removeFromSplitLayout = useCallback((tabId: number) => {
     setSplitLayoutState((prevLayout) => {
@@ -793,8 +789,9 @@ export function TabProvider({ children }: TabProviderProps) {
     });
   }, []);
 
-  const [tabDragToSplit, setTabDragToSplit] =
-    useState<TabDragToSplit | null>(null);
+  const [tabDragToSplit, setTabDragToSplit] = useState<TabDragToSplit | null>(
+    null,
+  );
 
   const startTabDragToSplit = useCallback((tabId: number) => {
     setTabDragToSplit({ draggedTabId: tabId, isOverTerminalArea: false });
@@ -862,8 +859,7 @@ export function TabProvider({ children }: TabProviderProps) {
         } else {
           // Dragged tab is the active tab — find another splittable tab
           const other = tabs.find(
-            (t) =>
-              t.id !== draggedTabId && SPLITTABLE_TYPES.includes(t.type),
+            (t) => t.id !== draggedTabId && SPLITTABLE_TYPES.includes(t.type),
           );
           if (other) {
             setCurrentTab(other.id);
