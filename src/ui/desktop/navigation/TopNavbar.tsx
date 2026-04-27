@@ -9,7 +9,6 @@ import {
   X,
   Terminal,
   Maximize2,
-  Minimize2,
   Pencil,
   Plus,
   Save,
@@ -1349,18 +1348,6 @@ export function TopNavbar({
                       ) : (
                         <ChevronDown className="h-4 w-4" />
                       )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTerminalsCondensed(false);
-                      }}
-                      title={t("nav.exitCondensedView")}
-                    >
-                      <Minimize2 className="h-4 w-4" />
                     </Button>
                   </div>
                   {splitPillContextMenu && (
