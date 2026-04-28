@@ -173,6 +173,12 @@ function AppContent({
       }
 
       // Ctrl+D — duplicate the active terminal tab into a split view.
+      // In split mode `currentTab` is the leaf that opened the split,
+      // not necessarily the pane the user is currently typing into.
+      // Resolve the actually-focused pane by walking up from
+      // document.activeElement to the [data-pane-id] wrapper that
+      // AppView tags every terminal pane with; fall back to
+      // currentTab if focus is outside the split (search bar, etc.).
       if (
         event.key === "d" &&
         event.ctrlKey &&
@@ -181,8 +187,23 @@ function AppContent({
         !event.metaKey &&
         !event.repeat
       ) {
-        if (currentTab != null) {
-          const active = tabs.find((t) => t.id === currentTab);
+        let activeId: number | null = currentTab ?? null;
+        const ae = document.activeElement;
+        if (ae && typeof (ae as Element).closest === "function") {
+          const paneEl = (ae as Element).closest("[data-pane-id]");
+          const paneAttr = paneEl?.getAttribute("data-pane-id");
+          if (paneAttr) {
+            const n = parseInt(paneAttr, 10);
+            if (
+              Number.isFinite(n) &&
+              tabs.some((t) => t.id === n && t.type === "terminal")
+            ) {
+              activeId = n;
+            }
+          }
+        }
+        if (activeId != null) {
+          const active = tabs.find((t) => t.id === activeId);
           if (active && active.type === "terminal") {
             event.preventDefault();
             event.stopPropagation();
@@ -329,8 +350,9 @@ function AppContent({
     if (hostIdentifier) {
       const openTerminal = async () => {
         try {
-          const { getSSHHostById, getSSHHosts } =
-            await import("@/ui/main-axios.ts");
+          const { getSSHHostById, getSSHHosts } = await import(
+            "@/ui/main-axios.ts"
+          );
           let host = null;
 
           if (/^\d+$/.test(hostIdentifier)) {

@@ -1209,6 +1209,7 @@ export function AppView({
           return (
             <div
               key={t.id}
+              data-pane-id={t.id}
               style={{
                 ...finalStyle,
                 pointerEvents:
