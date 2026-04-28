@@ -224,6 +224,11 @@ function AppContent({
       }
 
       // Ctrl+; — close the current tab (or focused pane in a split view).
+      // Pre-select the closest tab to the left in tab-bar order BEFORE
+      // calling removeTab so the user keeps working near where they were
+      // instead of getting bounced back to Home/Host Manager. removeTab's
+      // "pick a new active tab" branch is gated on currentTab === closedId,
+      // so switching focus first short-circuits it.
       if (
         event.key === ";" &&
         event.ctrlKey &&
@@ -235,7 +240,17 @@ function AppContent({
         if (currentTab != null) {
           event.preventDefault();
           event.stopPropagation();
-          removeTab(currentTab);
+          const closedId = currentTab;
+          const idx = tabs.findIndex((t) => t.id === closedId);
+          let leftId: number | null = null;
+          for (let i = idx - 1; i >= 0; i--) {
+            if (tabs[i].id !== closedId) {
+              leftId = tabs[i].id;
+              break;
+            }
+          }
+          if (leftId != null) setCurrentTab(leftId);
+          removeTab(closedId);
         }
         return;
       }
