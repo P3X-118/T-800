@@ -12,6 +12,7 @@ import guacamoleRoutes from "../guacamole/routes.js";
 import networkTopologyRoutes from "./routes/network-topology.js";
 import rbacRoutes from "./routes/rbac.js";
 import webauthnRoutes from "./routes/webauthn.js";
+import splitGroupsRoutes from "./routes/split-groups.js";
 import cors from "cors";
 import fetch from "node-fetch";
 import fs from "fs";
@@ -1795,6 +1796,7 @@ app.use("/guacamole", guacamoleRoutes);
 app.use("/network-topology", networkTopologyRoutes);
 app.use("/rbac", rbacRoutes);
 app.use("/webauthn", webauthnRoutes);
+app.use("/split-groups", splitGroupsRoutes);
 
 const frontendDistPaths = [
   path.join(__dirname, "../../../dist"),

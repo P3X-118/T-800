@@ -19,7 +19,9 @@ import { isElectron, logoutUser } from "@/ui/main-axios.ts";
 import {
   type SavedSplitGroup,
   loadSavedSplitGroups,
-  persistSavedSplitGroups,
+  saveNewSplitGroup,
+  renameSavedSplitGroup,
+  removeSavedSplitGroup,
   buildSavedSplitGroup,
   instantiateSavedSplitGroup,
 } from "@/ui/desktop/navigation/splitGroups/savedSplitGroups.ts";
@@ -386,9 +388,11 @@ export function LeftSidebar({
   }, [isSidebarOpenPersisted]);
 
   // ── Saved Split View Groups ──────────────────────────────────────────
-  const [savedGroups, setSavedGroups] = useState<SavedSplitGroup[]>(() =>
-    loadSavedSplitGroups(),
-  );
+  // Source of truth lives on the server (per-user) so a saved layout
+  // follows the user across browsers. The local state mirrors the
+  // server so the UI is responsive — every mutation hits the API and
+  // then reconciles the row returned by the server back into state.
+  const [savedGroups, setSavedGroups] = useState<SavedSplitGroup[]>([]);
   const [savedGroupsPopoverOpen, setSavedGroupsPopoverOpen] =
     useState<boolean>(false);
   const [newGroupName, setNewGroupName] = useState<string>("");
@@ -398,8 +402,18 @@ export function LeftSidebar({
   const savedGroupsTriggerRef = React.useRef<HTMLButtonElement | null>(null);
 
   React.useEffect(() => {
-    persistSavedSplitGroups(savedGroups);
-  }, [savedGroups]);
+    let cancelled = false;
+    loadSavedSplitGroups()
+      .then((groups) => {
+        if (!cancelled) setSavedGroups(groups);
+      })
+      .catch(() => {
+        if (!cancelled) setSavedGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Close popover on outside click
   React.useEffect(() => {
@@ -422,7 +436,7 @@ export function LeftSidebar({
 
   const hasActiveSplit = !!splitLayout && splitLayout.type === "split";
 
-  const handleSaveCurrentSplitGroup = () => {
+  const handleSaveCurrentSplitGroup = async () => {
     const name = newGroupName.trim();
     if (!name) {
       toast.error("Give the split view a name first");
@@ -446,9 +460,14 @@ export function LeftSidebar({
       toast.error("Current split view doesn't have enough tabs to save");
       return;
     }
-    setSavedGroups((prev) => [...prev, group]);
-    setNewGroupName("");
-    toast.success(`Saved split view "${name}"`);
+    try {
+      const created = await saveNewSplitGroup(group);
+      setSavedGroups((prev) => [...prev, created]);
+      setNewGroupName("");
+      toast.success(`Saved split view "${name}"`);
+    } catch {
+      toast.error("Failed to save split view");
+    }
   };
 
   const handleLoadSavedSplitGroup = (group: SavedSplitGroup) => {
@@ -463,9 +482,17 @@ export function LeftSidebar({
     toast.success(`Loaded "${group.name}"`);
   };
 
-  const handleDeleteSavedSplitGroup = (id: string) => {
-    setSavedGroups((prev) => prev.filter((g) => g.id !== id));
+  const handleDeleteSavedSplitGroup = async (id: string) => {
+    const prev = savedGroups;
+    setSavedGroups((cur) => cur.filter((g) => g.id !== id));
     if (editingGroupId === id) setEditingGroupId(null);
+    try {
+      await removeSavedSplitGroup(id);
+    } catch {
+      // Restore on failure so the user doesn't silently lose a row.
+      setSavedGroups(prev);
+      toast.error("Failed to delete split view");
+    }
   };
 
   const handleStartRenameGroup = (group: SavedSplitGroup) => {
@@ -473,19 +500,26 @@ export function LeftSidebar({
     setEditingGroupName(group.name);
   };
 
-  const handleCommitRenameGroup = () => {
+  const handleCommitRenameGroup = async () => {
     if (!editingGroupId) return;
     const name = editingGroupName.trim();
+    const id = editingGroupId;
     if (!name) {
       setEditingGroupId(null);
       return;
     }
-    setSavedGroups((prev) =>
-      prev.map((g) =>
-        g.id === editingGroupId ? { ...g, name, updatedAt: Date.now() } : g,
-      ),
-    );
     setEditingGroupId(null);
+    const prev = savedGroups;
+    setSavedGroups((cur) =>
+      cur.map((g) => (g.id === id ? { ...g, name, updatedAt: Date.now() } : g)),
+    );
+    try {
+      const updated = await renameSavedSplitGroup(id, name);
+      setSavedGroups((cur) => cur.map((g) => (g.id === id ? updated : g)));
+    } catch {
+      setSavedGroups(prev);
+      toast.error("Failed to rename split view");
+    }
   };
 
   // Default width is wide enough to fit ~12-character hostnames without
