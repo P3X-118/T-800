@@ -1454,6 +1454,12 @@ export function AppView({
     if (currentTab !== null && !allSplitScreenTab.includes(currentTab)) {
       return null;
     }
+    // When a pane is maximized (focus mode), the grid + resize handles
+    // shouldn't render — they'd sit at the same z-layer as the focused
+    // terminal and steal both painting and pointer events. The titlebar
+    // for the focused pane is still rendered by renderPanelTitlebars
+    // and gets its own elevated z-index.
+    if (focusedTabId !== null) return null;
 
     const handleStyle = {
       pointerEvents: "auto",
