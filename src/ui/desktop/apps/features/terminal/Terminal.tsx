@@ -2019,6 +2019,30 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         }
 
+        // Paste: Ctrl+Shift+V, Cmd+V, or Shift+Insert. Plain Ctrl+V is
+        // intentionally NOT bound to paste so vim's visual-block (^V),
+        // bash's literal-next, etc. work — those need the raw 0x16 byte
+        // delivered to the PTY. The browser would otherwise auto-paste
+        // via the hidden textarea's paste event, so we preventDefault
+        // and inject ^V ourselves.
+        if (
+          ((e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) ||
+            (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) ||
+            (e.shiftKey &&
+              !e.ctrlKey &&
+              !e.altKey &&
+              !e.metaKey &&
+              e.key === "Insert")) &&
+          (e.key.toLowerCase() === "v" || e.key === "Insert")
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          readTextFromClipboard().then((text) => {
+            if (text) terminal.paste(text);
+          });
+          return false;
+        }
+
         if (
           e.ctrlKey &&
           !e.shiftKey &&
@@ -2026,11 +2050,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           !e.metaKey &&
           e.key.toLowerCase() === "v"
         ) {
+          if (e.type !== "keydown") return false;
           e.preventDefault();
           e.stopPropagation();
-          readTextFromClipboard().then((text) => {
-            if (text) terminal.paste(text);
-          });
+          if (webSocketRef.current?.readyState === 1) {
+            webSocketRef.current.send(
+              JSON.stringify({ type: "input", data: "\x16" }),
+            );
+          }
           return false;
         }
 
