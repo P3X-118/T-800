@@ -1175,6 +1175,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             setIsConnecting(false);
             isConnectingRef.current = false;
             updateConnectionError(null);
+            // Resync PTY size now that the shell exists. The cols/rows
+            // baked into the initial connectToHost message are whatever
+            // xterm had when the request went out; any resize fired
+            // between then and shell-ready is silently dropped by the
+            // backend (sshStream is null until conn.shell completes),
+            // which is exactly what produces the visible-wrap-mid-word
+            // bash prompt. Force a fresh fit + send the current cols/
+            // rows, bypassing the dedup so the PTY adopts them.
+            if (terminal && fitAddonRef.current) {
+              try {
+                fitAddonRef.current.fit();
+              } catch {
+                /* ignore */
+              }
+              if (terminal.cols > 0 && terminal.rows > 0) {
+                lastSentSizeRef.current = null;
+                scheduleNotify(terminal.cols, terminal.rows);
+              }
+            }
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
               connectionTimeoutRef.current = null;
