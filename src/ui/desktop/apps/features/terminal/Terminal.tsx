@@ -681,7 +681,28 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           hardRefresh();
         },
         focus: () => {
-          terminal?.focus();
+          // xterm's own focus() targets the helper textarea, but it
+          // silently no-ops if the terminal isn't fully open yet
+          // (single-terminal Ctrl+Tab path: tab swap → fresh mount →
+          // focus called before xterm finished opening). Fall back to
+          // the helper textarea directly via the DOM, and if even that
+          // isn't ready yet, retry on the next paint until it mounts
+          // or we give up. Capped at a handful of frames so a closed
+          // tab can't loop forever.
+          const tryFocus = (attempt: number) => {
+            terminal?.focus();
+            const ta = xtermRef.current?.querySelector(
+              "textarea",
+            ) as HTMLTextAreaElement | null;
+            if (ta) {
+              ta.focus();
+              return;
+            }
+            if (attempt < 10) {
+              requestAnimationFrame(() => tryFocus(attempt + 1));
+            }
+          };
+          tryFocus(0);
         },
         sendInput: (data: string) => {
           if (webSocketRef.current?.readyState === 1) {
