@@ -324,6 +324,25 @@ async function createJumpHostChain(
   }
 }
 
+// Server-side WebSocket heartbeat. Sends an RFC 6455 protocol-level
+// ping every WS_HEARTBEAT_MS to every connected client; the browser
+// replies with pong automatically. Without this, idle connections
+// can be silently severed by NAT routers, firewalls, or reverse
+// proxies (Caddy in front of t800.sgc.ai has its own idle timeout)
+// after a few minutes — both sides keep the socket open in their
+// state but the next send fails. Active app traffic does the same
+// job, but a long-idle SSH session (e.g. tail -f waiting overnight)
+// produces no traffic; the heartbeat carries the connection.
+//
+// We track liveness with a per-socket `isAlive` flag: each tick, if
+// the previous ping never got a pong back, we terminate; otherwise
+// we set the flag false and ping again. The pong handler sets it
+// back to true. 60s gives slow networks (transcontinental, mobile
+// reconnects) plenty of round-trip room while still freeing dead
+// sockets within ~2 min.
+const WS_HEARTBEAT_MS = 60_000;
+type LivenessWS = WebSocket & { isAlive?: boolean };
+
 const wss = new WebSocketServer({
   port: 30002,
   verifyClient: async (info) => {
@@ -362,7 +381,34 @@ const wss = new WebSocketServer({
   },
 });
 
+const heartbeatTimer = setInterval(() => {
+  for (const client of wss.clients) {
+    const c = client as LivenessWS;
+    if (c.readyState !== WebSocket.OPEN) continue;
+    if (c.isAlive === false) {
+      // Last cycle's ping went unanswered — the peer is gone.
+      // terminate() drops the TCP socket immediately, which fires
+      // the existing ws.on("close") handler so attached SSH
+      // sessions are cleaned up the same way as a graceful close.
+      c.terminate();
+      continue;
+    }
+    c.isAlive = false;
+    try {
+      c.ping();
+    } catch {
+      /* ignore — terminate on next cycle if still wedged */
+    }
+  }
+}, WS_HEARTBEAT_MS);
+wss.on("close", () => clearInterval(heartbeatTimer));
+
 wss.on("connection", async (ws: WebSocket, req) => {
+  (ws as LivenessWS).isAlive = true;
+  ws.on("pong", () => {
+    (ws as LivenessWS).isAlive = true;
+  });
+
   let userId: string | undefined;
   let sessionId: string | undefined;
 
