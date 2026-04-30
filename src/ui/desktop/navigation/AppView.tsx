@@ -273,6 +273,13 @@ export function AppView({
   const [panelEditValue, setPanelEditValue] = useState("");
   const panelEditInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Tabs that the user recently promoted via Max Column / Max Row. When
+  // another max action displaces siblings, we avoid dumping them into a
+  // column/row that's currently a solo recently-maxed tab — otherwise the
+  // first max gets clobbered by the second. Stale ids (closed tabs, tabs
+  // no longer solo) are pruned on read.
+  const recentlyMaxedRef = useRef<Set<number>>(new Set());
+
   // "Focus mode" — a single terminal zooms to fill the container on top of
   // the split layout. Escape or the toggle button exits.
   const [focusedTabId, setFocusedTabId] = useState<number | null>(null);
@@ -479,13 +486,27 @@ export function AppView({
     // Collect displaced tabs (others in the same column)
     const displaced = columns[targetColIdx].filter((id) => id !== tabId);
 
-    // Push displaced to nearest neighbour
-    const neighborIdx =
-      targetColIdx > 0
-        ? targetColIdx - 1
-        : targetColIdx < columns.length - 1
-          ? targetColIdx + 1
-          : -1;
+    // Push displaced to nearest neighbour, but skip neighbours that are
+    // currently a solo recently-maxed tab so we don't undo a previous
+    // max action. Walks outward (left first, then right) at increasing
+    // distance and falls back to the immediate neighbour if every other
+    // group is also protected.
+    const protectedSet = recentlyMaxedRef.current;
+    const isProtectedGroup = (group: number[]) =>
+      group.length === 1 && protectedSet.has(group[0]);
+    const pickNeighbor = (groups: number[][], idx: number) => {
+      const n = groups.length;
+      for (let dist = 1; dist < n; dist++) {
+        const left = idx - dist;
+        if (left >= 0 && !isProtectedGroup(groups[left])) return left;
+        const right = idx + dist;
+        if (right < n && !isProtectedGroup(groups[right])) return right;
+      }
+      if (idx > 0) return idx - 1;
+      if (idx < n - 1) return idx + 1;
+      return -1;
+    };
+    const neighborIdx = pickNeighbor(columns, targetColIdx);
 
     // Build new columns
     const newColumns: number[][] = [];
@@ -515,6 +536,16 @@ export function AppView({
         direction: "horizontal",
         children: hChildren,
       });
+    }
+    // Protect this tab from absorbing later max-action displacements.
+    // Prune ids that are no longer in the layout to keep the set small.
+    recentlyMaxedRef.current.add(tabId);
+    {
+      const live = new Set(getLeafIds(splitLayout));
+      for (const id of Array.from(recentlyMaxedRef.current)) {
+        if (!live.has(id) && id !== tabId)
+          recentlyMaxedRef.current.delete(id);
+      }
     }
     setResetKey((k) => k + 1);
     requestAnimationFrame(() => scheduleMeasureAndFit());
@@ -553,12 +584,22 @@ export function AppView({
     if (targetRowIdx < 0) targetRowIdx = 0;
 
     const displaced = rows[targetRowIdx].filter((id) => id !== tabId);
-    const neighborIdx =
-      targetRowIdx > 0
-        ? targetRowIdx - 1
-        : targetRowIdx < rows.length - 1
-          ? targetRowIdx + 1
-          : -1;
+    const protectedSet = recentlyMaxedRef.current;
+    const isProtectedGroup = (group: number[]) =>
+      group.length === 1 && protectedSet.has(group[0]);
+    const pickNeighbor = (groups: number[][], idx: number) => {
+      const n = groups.length;
+      for (let dist = 1; dist < n; dist++) {
+        const above = idx - dist;
+        if (above >= 0 && !isProtectedGroup(groups[above])) return above;
+        const below = idx + dist;
+        if (below < n && !isProtectedGroup(groups[below])) return below;
+      }
+      if (idx > 0) return idx - 1;
+      if (idx < n - 1) return idx + 1;
+      return -1;
+    };
+    const neighborIdx = pickNeighbor(rows, targetRowIdx);
 
     const newRows: number[][] = [];
     for (let r = 0; r < rows.length; r++) {
@@ -586,6 +627,14 @@ export function AppView({
         direction: "vertical",
         children: vChildren,
       });
+    }
+    recentlyMaxedRef.current.add(tabId);
+    {
+      const live = new Set(getLeafIds(splitLayout));
+      for (const id of Array.from(recentlyMaxedRef.current)) {
+        if (!live.has(id) && id !== tabId)
+          recentlyMaxedRef.current.delete(id);
+      }
     }
     setResetKey((k) => k + 1);
     requestAnimationFrame(() => scheduleMeasureAndFit());
