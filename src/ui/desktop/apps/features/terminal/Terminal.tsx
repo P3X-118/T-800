@@ -390,6 +390,15 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
     useEffect(() => {
       isVisibleRef.current = isVisible;
+      // Coming back to a previously-hidden tab: reset the reconnect
+      // attempt budget so a fresh visible-side reconnection sequence
+      // gets the full 3 retries even if there were prior failures
+      // while the tab was hidden. shouldNotReconnectRef is left
+      // alone — that flag still represents "stop trying" for
+      // legitimately fatal cases (auth errors, deleted hosts).
+      if (isVisible) {
+        reconnectAttempts.current = 0;
+      }
     }, [isVisible]);
 
     // When this terminal tab becomes hidden, stamp lastBlurAt so the
@@ -708,6 +717,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         wasDisconnectedBySSH.current ||
         reconnectTimeoutRef.current !== null
       ) {
+        return;
+      }
+
+      // Don't burn reconnect attempts on a hidden tab. xterm is
+      // display:none in the background, so cols/rows read as 0 and
+      // the new PTY would be created with bad geometry; three quick
+      // failures then flip shouldNotReconnectRef and the tab is dead
+      // forever. Bail without incrementing the attempt counter — the
+      // visibility-gated connect effect (search isVisible in this
+      // file) will open a fresh connection the moment the tab is
+      // shown again.
+      if (!isVisibleRef.current) {
         return;
       }
 
