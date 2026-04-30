@@ -75,7 +75,19 @@ configs:
       {env.DOMAIN} {
         tls /etc/caddy/certs/fullchain.pem /etc/caddy/certs/privkey.pem
         encode zstd gzip
-        reverse_proxy t800:8080
+        # Long-lived WebSockets (terminal, server-stats, guacamole):
+        # disable response buffering and proxy timeouts so sessions can
+        # idle for hours/days without being torn down by the proxy.
+        reverse_proxy t800:8080 {
+          flush_interval -1
+          transport http {
+            read_timeout 0
+            write_timeout 0
+            dial_timeout 30s
+            keepalive 30s
+            keepalive_idle_conns_per_host 16
+          }
+        }
       }
 
 volumes:
