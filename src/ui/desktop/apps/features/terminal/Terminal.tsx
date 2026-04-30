@@ -2020,16 +2020,21 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           return true;
         }
 
-        // Alt+H/J/K/L is reserved for vim-style split-pane navigation
-        // (AppView listens for it). Returning false here tells xterm
+        // Alt/Meta + H/J/K/L is reserved for vim-style split-pane
+        // navigation (AppView listens for it). Match on e.code so the
+        // physical key wins even when Alt produces a dead-key char on
+        // macOS Option / Compose layouts. Returning false tells xterm
         // not to consume the key or emit an ESC+letter sequence into
         // the shell, so the nav handler can take it cleanly.
+        const navModifier = e.altKey !== e.metaKey;
         if (
-          e.altKey &&
+          navModifier &&
           !e.ctrlKey &&
           !e.shiftKey &&
-          !e.metaKey &&
-          (e.key === "h" || e.key === "j" || e.key === "k" || e.key === "l")
+          (e.code === "KeyH" ||
+            e.code === "KeyJ" ||
+            e.code === "KeyK" ||
+            e.code === "KeyL")
         ) {
           return false;
         }
