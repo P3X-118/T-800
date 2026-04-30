@@ -324,6 +324,25 @@ async function createJumpHostChain(
   }
 }
 
+// Server-side WebSocket heartbeat. Sends an RFC 6455 protocol-level
+// ping every WS_HEARTBEAT_MS to every connected client; the browser
+// replies with pong automatically. Without this, idle connections
+// can be silently severed by NAT routers, firewalls, or reverse
+// proxies (Caddy in front of t800.sgc.ai has its own idle timeout)
+// after a few minutes — both sides keep the socket open in their
+// state but the next send fails. Active app traffic does the same
+// job, but a long-idle SSH session (e.g. tail -f waiting overnight)
+// produces no traffic; the heartbeat carries the connection.
+//
+// We track liveness with a per-socket `isAlive` flag: each tick, if
+// the previous ping never got a pong back, we terminate; otherwise
+// we set the flag false and ping again. The pong handler sets it
+// back to true. 60s gives slow networks (transcontinental, mobile
+// reconnects) plenty of round-trip room while still freeing dead
+// sockets within ~2 min.
+const WS_HEARTBEAT_MS = 60_000;
+type LivenessWS = WebSocket & { isAlive?: boolean };
+
 const wss = new WebSocketServer({
   port: 30002,
   verifyClient: async (info) => {
@@ -362,7 +381,34 @@ const wss = new WebSocketServer({
   },
 });
 
+const heartbeatTimer = setInterval(() => {
+  for (const client of wss.clients) {
+    const c = client as LivenessWS;
+    if (c.readyState !== WebSocket.OPEN) continue;
+    if (c.isAlive === false) {
+      // Last cycle's ping went unanswered — the peer is gone.
+      // terminate() drops the TCP socket immediately, which fires
+      // the existing ws.on("close") handler so attached SSH
+      // sessions are cleaned up the same way as a graceful close.
+      c.terminate();
+      continue;
+    }
+    c.isAlive = false;
+    try {
+      c.ping();
+    } catch {
+      /* ignore — terminate on next cycle if still wedged */
+    }
+  }
+}, WS_HEARTBEAT_MS);
+wss.on("close", () => clearInterval(heartbeatTimer));
+
 wss.on("connection", async (ws: WebSocket, req) => {
+  (ws as LivenessWS).isAlive = true;
+  ws.on("pong", () => {
+    (ws as LivenessWS).isAlive = true;
+  });
+
   let userId: string | undefined;
   let sessionId: string | undefined;
 
@@ -820,8 +866,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
         const opksshData = data as { hostId: number };
         try {
           const { startOPKSSHAuth } = await import("./opkssh-auth.js");
-          const { getRequestOrigin } =
-            await import("../utils/request-origin.js");
+          const { getRequestOrigin } = await import(
+            "../utils/request-origin.js"
+          );
           const db = getDb();
           const hostRow = await db
             .select()
@@ -1078,8 +1125,9 @@ wss.on("connection", async (ws: WebSocket, req) => {
 
       if (ownerId && userId !== ownerId) {
         try {
-          const { SharedCredentialManager } =
-            await import("../utils/shared-credential-manager.js");
+          const { SharedCredentialManager } = await import(
+            "../utils/shared-credential-manager.js"
+          );
           const sharedCredManager = SharedCredentialManager.getInstance();
           const sharedCred = await sharedCredManager.getSharedCredentialForUser(
             id,
@@ -1379,10 +1427,46 @@ wss.on("connection", async (ws: WebSocket, req) => {
           // and prevent the ImageAddon from rendering sixel images.
           const utf8Decoder = new StringDecoder("utf8");
 
+          // Idle-output detection: when the PTY has produced no bytes
+          // for IDLE_THRESHOLD_MS, emit an "idle" frame so the client
+          // can pulse the tab pill (proxy for "process is waiting on
+          // user input"). False-positives on long silent computations
+          // are accepted — a stricter signal would require shell-side
+          // OSC 133 cooperation we can't assume on arbitrary hosts.
+          const IDLE_THRESHOLD_MS = 1500;
+          let idleTimer: NodeJS.Timeout | null = null;
+          let isIdle = false;
+          const sendIdleState = (idle: boolean) => {
+            const s = sessionManager.getSession(boundSessionId);
+            if (s?.attachedWs?.readyState === WebSocket.OPEN) {
+              s.attachedWs.send(
+                JSON.stringify({ type: idle ? "idle" : "active" }),
+              );
+            }
+          };
+          const markActive = () => {
+            if (idleTimer) clearTimeout(idleTimer);
+            if (isIdle) {
+              isIdle = false;
+              sendIdleState(false);
+            }
+            idleTimer = setTimeout(() => {
+              isIdle = true;
+              sendIdleState(true);
+            }, IDLE_THRESHOLD_MS);
+          };
+          const clearIdleTimer = () => {
+            if (idleTimer) {
+              clearTimeout(idleTimer);
+              idleTimer = null;
+            }
+          };
+
           stream.on("data", (data: Buffer) => {
             try {
               const session = sessionManager.getSession(boundSessionId);
               if (!session) return;
+              markActive();
 
               // Decode with a stateful decoder so boundary-split UTF-8
               // sequences are buffered until the next chunk completes
@@ -1392,8 +1476,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
               const utf8String = utf8Decoder.write(data);
               const hasReplacementChar = utf8String.includes("\uFFFD");
               const isBinaryData =
-                hasReplacementChar &&
-                !data.includes(0xef) // U+FFFD in UTF-8 is EF BF BD
+                hasReplacementChar && !data.includes(0xef) // U+FFFD in UTF-8 is EF BF BD
                   ? true
                   : hasReplacementChar &&
                     (() => {
@@ -1402,15 +1485,12 @@ wss.on("connection", async (ws: WebSocket, req) => {
                       const efbfbd = Buffer.from([0xef, 0xbf, 0xbd]);
                       let idx = 0;
                       let genuine = 0;
-                      while (
-                        (idx = data.indexOf(efbfbd, idx)) !== -1
-                      ) {
+                      while ((idx = data.indexOf(efbfbd, idx)) !== -1) {
                         genuine++;
                         idx += 3;
                       }
-                      const replacements = (
-                        utf8String.match(/\uFFFD/g) || []
-                      ).length;
+                      const replacements = (utf8String.match(/\uFFFD/g) || [])
+                        .length;
                       return replacements > genuine;
                     })();
 
@@ -1463,10 +1543,14 @@ wss.on("connection", async (ws: WebSocket, req) => {
           });
 
           stream.on("close", () => {
+            clearIdleTimer();
             const session = sessionManager.getSession(boundSessionId);
             // Drain any residual buffered UTF-8 bytes from the decoder.
             const trailing = utf8Decoder.end();
-            if (trailing && session?.attachedWs?.readyState === WebSocket.OPEN) {
+            if (
+              trailing &&
+              session?.attachedWs?.readyState === WebSocket.OPEN
+            ) {
               session.attachedWs.send(
                 JSON.stringify({ type: "data", data: trailing }),
               );
@@ -1489,6 +1573,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           });
 
           stream.on("error", (err: Error) => {
+            clearIdleTimer();
             sshLogger.error("SSH stream error", err, {
               operation: "ssh_stream",
               hostId: id,

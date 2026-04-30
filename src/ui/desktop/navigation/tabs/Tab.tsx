@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,11 @@ interface TabProps {
   onAddToSplit?: () => void;
   onSplitAll?: () => void;
   onDuplicate?: () => void;
+  isIdle?: boolean;
+  // External rename trigger. When this changes to a non-zero value
+  // (e.g. from the Ctrl+X shortcut wired up in Terminal/TabContext),
+  // the Tab enters edit mode using the current displayTitle.
+  renameSignal?: number;
 }
 
 export function Tab({
@@ -73,6 +78,8 @@ export function Tab({
   onAddToSplit,
   onSplitAll,
   onDuplicate,
+  isIdle = false,
+  renameSignal = 0,
 }: TabProps): React.ReactElement {
   const { t } = useTranslation();
   const [contextMenu, setContextMenu] = useState<{
@@ -100,6 +107,50 @@ export function Tab({
       window.removeEventListener("contextmenu", close);
     };
   }, [contextMenu]);
+
+  // Resolved label for this tab — same fallbacks the per-branch render
+  // uses, hoisted so the rename-signal effect below can pre-populate
+  // the edit input regardless of which branch eventually renders.
+  const resolvedTitle = useMemo(() => {
+    if (title) return title;
+    switch (tabType) {
+      case "server_stats":
+        return t("nav.serverStats");
+      case "file_manager":
+        return t("nav.fileManager");
+      case "tunnel":
+        return t("nav.tunnels");
+      case "docker":
+        return t("nav.docker");
+      case "user_profile":
+        return t("nav.userProfile");
+      case "rdp":
+      case "vnc":
+      case "telnet":
+        return tabType.toUpperCase();
+      case "ssh_manager":
+        return t("nav.sshManager");
+      case "admin":
+        return t("nav.admin");
+      case "network_graph":
+        return t("dashboard.networkGraph");
+      default:
+        return t("nav.terminal");
+    }
+  }, [title, tabType, t]);
+
+  // External rename trigger (e.g. Ctrl+X inside a focused terminal).
+  // Only acts on rename-capable tab types — onRename being defined is
+  // the same gate the context-menu rename uses.
+  useEffect(() => {
+    if (renameSignal > 0 && onRename) {
+      setEditValue(resolvedTitle);
+      setIsEditing(true);
+    }
+    // resolvedTitle/onRename intentionally omitted: only the signal
+    // edge should re-enter edit mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renameSignal]);
 
   const handleCopyPassword = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -300,6 +351,12 @@ export function Tab({
             ) : (
               <TerminalIcon className="h-4 w-4 flex-shrink-0" />
             )}
+            {isIdle && !isActive && (
+              <span
+                className="t800-tab-idle-dot h-1.5 w-1.5 rounded-full bg-foreground/60 flex-shrink-0"
+                aria-hidden="true"
+              />
+            )}
             {isEditing ? (
               <input
                 ref={editInputRef}
@@ -334,111 +391,111 @@ export function Tab({
           </div>
 
           {hasPassword && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleCopyPassword}
-            title={getPasswordButtonTitle()}
-          >
-            <Key className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        )}
-
-        {canSplit && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-6 w-6", disableSplit && "opacity-50")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!disableSplit && onSplit) onSplit();
-            }}
-            disabled={disableSplit}
-            title={
-              disableSplit ? t("nav.cannotSplitTab") : t("nav.splitScreen")
-            }
-          >
-            <SeparatorVertical
-              className={cn(
-                "h-4 w-4",
-                isSplit ? "text-foreground" : "text-muted-foreground",
-              )}
-            />
-          </Button>
-        )}
-
-        {canClose && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("h-6 w-6", disableClose && "opacity-50")}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!disableClose && onClose) onClose();
-            }}
-            disabled={disableClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
-      {contextMenu && (
-        <div
-          className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-            onClick={() => {
-              setEditValue(displayTitle);
-              setIsEditing(true);
-              setContextMenu(null);
-            }}
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename
-          </button>
-          {onDuplicate && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onDuplicate();
-                setContextMenu(null);
-              }}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={handleCopyPassword}
+              title={getPasswordButtonTitle()}
             >
-              <Copy className="w-3.5 h-3.5" />
-              Duplicate
-            </button>
+              <Key className="h-4 w-4 text-muted-foreground" />
+            </Button>
           )}
-          {onAddToSplit && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onAddToSplit();
-                setContextMenu(null);
+
+          {canSplit && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-6 w-6", disableSplit && "opacity-50")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disableSplit && onSplit) onSplit();
               }}
+              disabled={disableSplit}
+              title={
+                disableSplit ? t("nav.cannotSplitTab") : t("nav.splitScreen")
+              }
             >
-              <SeparatorVertical className="w-3.5 h-3.5" />
-              Add to Split View
-            </button>
+              <SeparatorVertical
+                className={cn(
+                  "h-4 w-4",
+                  isSplit ? "text-foreground" : "text-muted-foreground",
+                )}
+              />
+            </Button>
           )}
-          {onSplitAll && (
-            <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-              onClick={() => {
-                onSplitAll();
-                setContextMenu(null);
+
+          {canClose && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-6 w-6", disableClose && "opacity-50")}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!disableClose && onClose) onClose();
               }}
+              disabled={disableClose}
             >
-              <Columns2 className="w-3.5 h-3.5" />
-              Add all tabs to Split View
-            </button>
+              <X className="h-4 w-4" />
+            </Button>
           )}
         </div>
-      )}
+
+        {contextMenu && (
+          <div
+            className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+              onClick={() => {
+                setEditValue(displayTitle);
+                setIsEditing(true);
+                setContextMenu(null);
+              }}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Rename
+            </button>
+            {onDuplicate && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onDuplicate();
+                  setContextMenu(null);
+                }}
+              >
+                <Copy className="w-3.5 h-3.5" />
+                Duplicate
+              </button>
+            )}
+            {onAddToSplit && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onAddToSplit();
+                  setContextMenu(null);
+                }}
+              >
+                <SeparatorVertical className="w-3.5 h-3.5" />
+                Add to Split View
+              </button>
+            )}
+            {onSplitAll && (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={() => {
+                  onSplitAll();
+                  setContextMenu(null);
+                }}
+              >
+                <Columns2 className="w-3.5 h-3.5" />
+                Add all tabs to Split View
+              </button>
+            )}
+          </div>
+        )}
       </>
     );
   }

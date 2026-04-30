@@ -895,6 +895,30 @@ const migrateSchema = () => {
   }
 
   try {
+    sqlite.prepare("SELECT id FROM saved_split_groups LIMIT 1").get();
+  } catch {
+    try {
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS saved_split_groups (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          layout TEXT NOT NULL,
+          tabs TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+      `);
+    } catch (createError) {
+      databaseLogger.warn("Failed to create saved_split_groups table", {
+        operation: "schema_migration",
+        error: createError,
+      });
+    }
+  }
+
+  try {
     sqlite.prepare("SELECT id FROM host_access LIMIT 1").get();
   } catch {
     try {

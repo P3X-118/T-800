@@ -1332,10 +1332,9 @@ export async function provideSSHConfigKeys(
   }>,
 ): Promise<ProvideKeysResult> {
   try {
-    const response = await sshHostApi.post(
-      "/import-ssh-config/provide-keys",
-      { keys },
-    );
+    const response = await sshHostApi.post("/import-ssh-config/provide-keys", {
+      keys,
+    });
     return response.data;
   } catch (error) {
     throw handleApiError(error, "supply ssh-config keys");
@@ -3895,6 +3894,58 @@ export async function reorderSnippets(
 }
 
 // ============================================================================
+// SAVED SPLIT GROUPS (server-persisted, per-user)
+// ============================================================================
+
+export async function getSavedSplitGroups(): Promise<unknown[]> {
+  try {
+    const response = await authApi.get("/split-groups");
+    return Array.isArray(response.data) ? response.data : [];
+  } catch (error) {
+    throw handleApiError(error, "fetch saved split groups");
+  }
+}
+
+export async function createSavedSplitGroup(
+  group: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await authApi.post("/split-groups", group);
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "create saved split group");
+  }
+}
+
+export async function updateSavedSplitGroup(
+  id: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  try {
+    const response = await authApi.put(
+      `/split-groups/${encodeURIComponent(id)}`,
+      updates,
+    );
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "update saved split group");
+  }
+}
+
+export async function deleteSavedSplitGroup(
+  id: string,
+): Promise<{ success: boolean }> {
+  try {
+    const response = await authApi.delete(
+      `/split-groups/${encodeURIComponent(id)}`,
+    );
+    return response.data;
+  } catch (error) {
+    throw handleApiError(error, "delete saved split group");
+  }
+}
+
+// ============================================================================
 // DASHBOARD API
 // ============================================================================
 
@@ -4748,7 +4799,9 @@ export interface WebAuthnCredential {
   aaguid: string | null;
 }
 
-export async function getWebAuthnRegistrationOptions(): Promise<Record<string, unknown>> {
+export async function getWebAuthnRegistrationOptions(): Promise<
+  Record<string, unknown>
+> {
   const response = await authApi.post("/webauthn/register/options");
   return response.data;
 }
@@ -4794,9 +4847,7 @@ export async function checkWebAuthnCredentials(
   userId: string,
 ): Promise<boolean> {
   try {
-    const response = await authApi.get(
-      `/webauthn/has-credentials/${userId}`,
-    );
+    const response = await authApi.get(`/webauthn/has-credentials/${userId}`);
     return response.data?.hasCredentials ?? false;
   } catch {
     return false;

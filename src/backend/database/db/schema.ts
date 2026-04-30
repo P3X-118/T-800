@@ -331,6 +331,25 @@ export const sshFolders = sqliteTable("ssh_folders", {
     .default(sql`CURRENT_TIMESTAMP`),
 });
 
+// Per-user named split-view presets. `id` is a client-minted UUID
+// (kept stable so devices can sync without renaming). `layout` and
+// `tabs` hold JSON-serialized SplitLayoutNode / SavedSplitGroupTab[]
+// from src/ui/desktop/navigation/splitGroups/savedSplitGroups.ts —
+// the same shape the client used to keep in localStorage.
+// createdAt/updatedAt are ms-since-epoch to match the client's
+// `SavedSplitGroup` shape (number, not ISO string).
+export const savedSplitGroups = sqliteTable("saved_split_groups", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  layout: text("layout").notNull(),
+  tabs: text("tabs").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const recentActivity = sqliteTable("recent_activity", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id")

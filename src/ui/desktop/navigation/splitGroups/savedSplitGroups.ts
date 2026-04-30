@@ -1,7 +1,17 @@
 import type { SplitLayoutNode } from "@/ui/desktop/navigation/tabs/splitLayout.ts";
 import type { SSHHost } from "@/types/index.ts";
+import {
+  getSavedSplitGroups,
+  createSavedSplitGroup as createSavedSplitGroupApi,
+  updateSavedSplitGroup as updateSavedSplitGroupApi,
+  deleteSavedSplitGroup as deleteSavedSplitGroupApi,
+} from "@/ui/main-axios.ts";
 
-const STORAGE_KEY = "t800_savedSplitGroups";
+// Legacy localStorage key used before the move to server-side
+// per-user persistence. Migrated up to the server on first load
+// and then cleared. Kept as a constant so the migration step has
+// exactly one source of truth.
+const LEGACY_STORAGE_KEY = "t800_savedSplitGroups";
 
 /**
  * Tab snapshot stored inside a saved split group. The runtime `tabId` stored
@@ -39,32 +49,97 @@ function generateId(): string {
   return `sg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function loadSavedSplitGroups(): SavedSplitGroup[] {
+function isSavedSplitGroup(g: unknown): g is SavedSplitGroup {
+  if (!g || typeof g !== "object") return false;
+  const r = g as Record<string, unknown>;
+  return (
+    typeof r.id === "string" &&
+    typeof r.name === "string" &&
+    !!r.layout &&
+    Array.isArray(r.tabs)
+  );
+}
+
+function readLegacyLocalGroups(): SavedSplitGroup[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (g): g is SavedSplitGroup =>
-        g &&
-        typeof g === "object" &&
-        typeof g.id === "string" &&
-        typeof g.name === "string" &&
-        g.layout &&
-        Array.isArray(g.tabs),
-    );
+    return parsed.filter(isSavedSplitGroup);
   } catch {
     return [];
   }
 }
 
-export function persistSavedSplitGroups(groups: SavedSplitGroup[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
-  } catch {
-    /* ignore quota / privacy errors */
+// One-time migration: if the server has nothing yet but the user's
+// browser has the old localStorage cache, push everything up and
+// clear the cache. Runs at most once per user/browser; subsequent
+// loads short-circuit on `serverGroups.length > 0` or an empty
+// legacy cache.
+async function migrateLegacyLocalGroups(
+  serverGroups: SavedSplitGroup[],
+): Promise<SavedSplitGroup[]> {
+  if (serverGroups.length > 0) return serverGroups;
+  const legacy = readLegacyLocalGroups();
+  if (legacy.length === 0) return serverGroups;
+  const uploaded: SavedSplitGroup[] = [];
+  for (const g of legacy) {
+    try {
+      const created = (await createSavedSplitGroupApi(
+        g as unknown as Record<string, unknown>,
+      )) as unknown as SavedSplitGroup;
+      uploaded.push(created);
+    } catch {
+      /* skip one-off failures; the next load will retry */
+    }
   }
+  if (uploaded.length === legacy.length) {
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+  return uploaded;
+}
+
+// Fetches saved split groups from the server, falling back to (and
+// migrating up) any legacy localStorage cache on first run.
+export async function loadSavedSplitGroups(): Promise<SavedSplitGroup[]> {
+  try {
+    const raw = (await getSavedSplitGroups()) as unknown[];
+    const valid = raw.filter(isSavedSplitGroup);
+    return await migrateLegacyLocalGroups(valid);
+  } catch {
+    // Server unreachable / unauthenticated — fall back to legacy
+    // local cache so the UI stays usable. Don't migrate in this
+    // path; we'd risk uploading stale data once auth recovers.
+    return readLegacyLocalGroups();
+  }
+}
+
+export async function saveNewSplitGroup(
+  group: SavedSplitGroup,
+): Promise<SavedSplitGroup> {
+  const created = (await createSavedSplitGroupApi(
+    group as unknown as Record<string, unknown>,
+  )) as unknown as SavedSplitGroup;
+  return created;
+}
+
+export async function renameSavedSplitGroup(
+  id: string,
+  name: string,
+): Promise<SavedSplitGroup> {
+  const updated = (await updateSavedSplitGroupApi(id, {
+    name,
+  })) as unknown as SavedSplitGroup;
+  return updated;
+}
+
+export async function removeSavedSplitGroup(id: string): Promise<void> {
+  await deleteSavedSplitGroupApi(id);
 }
 
 /**

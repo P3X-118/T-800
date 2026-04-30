@@ -47,6 +47,7 @@ import {
   useConnectionLog,
 } from "@/ui/desktop/navigation/connection-log/ConnectionLogContext.tsx";
 import { ConnectionLog } from "@/ui/desktop/navigation/connection-log/ConnectionLog.tsx";
+import { useTabsOptional } from "@/ui/desktop/navigation/tabs/TabContext.tsx";
 import { toast } from "sonner";
 
 interface HostConfig {
@@ -115,6 +116,36 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const { confirmWithToast } = useConfirmation();
     const { theme: appTheme } = useTheme();
     const { addLog, isExpanded: isConnectionLogExpanded } = useConnectionLog();
+    const tabsCtx = useTabsOptional();
+    // The xterm key handler is attached once per terminal mount with a
+    // [terminal] dep array, so it captures `tabsCtx` at attach time.
+    // Route through a ref so Ctrl+X always sees the current tabs list
+    // and requestRenameTab function.
+    const tabsCtxRef = useRef(tabsCtx);
+    useEffect(() => {
+      tabsCtxRef.current = tabsCtx;
+    }, [tabsCtx]);
+    const setTabIdle = useCallback(
+      (idle: boolean) => {
+        if (!tabsCtx) return;
+        const match = tabsCtx.tabs.find(
+          (t) =>
+            t.type === "terminal" &&
+            t.hostConfig?.id === hostConfig.id &&
+            t.instanceId === hostConfig.instanceId,
+        );
+        if (!match) return;
+        // Suppress pulse for the first 5s after the tab loses focus so
+        // quick tab switches don't strobe.
+        if (idle && match.lastBlurAt && Date.now() - match.lastBlurAt < 5000) {
+          return;
+        }
+        if (Boolean(match.isIdle) !== idle) {
+          tabsCtx.updateTab(match.id, { isIdle: idle });
+        }
+      },
+      [tabsCtx, hostConfig.id, hostConfig.instanceId],
+    );
 
     const config = { ...DEFAULT_TERMINAL_CONFIG, ...hostConfig.terminalConfig };
 
@@ -359,7 +390,35 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
     useEffect(() => {
       isVisibleRef.current = isVisible;
+      // Coming back to a previously-hidden tab: reset the reconnect
+      // attempt budget so a fresh visible-side reconnection sequence
+      // gets the full 3 retries even if there were prior failures
+      // while the tab was hidden. shouldNotReconnectRef is left
+      // alone — that flag still represents "stop trying" for
+      // legitimately fatal cases (auth errors, deleted hosts).
+      if (isVisible) {
+        reconnectAttempts.current = 0;
+      }
     }, [isVisible]);
+
+    // When this terminal tab becomes hidden, stamp lastBlurAt so the
+    // idle pulse is suppressed for ~5s after a context switch. When it
+    // becomes visible again, clear any stale idle flag.
+    useEffect(() => {
+      if (!tabsCtx) return;
+      const match = tabsCtx.tabs.find(
+        (t) =>
+          t.type === "terminal" &&
+          t.hostConfig?.id === hostConfig.id &&
+          t.instanceId === hostConfig.instanceId,
+      );
+      if (!match) return;
+      if (isVisible) {
+        if (match.isIdle) tabsCtx.updateTab(match.id, { isIdle: false });
+      } else {
+        tabsCtx.updateTab(match.id, { lastBlurAt: Date.now() });
+      }
+    }, [isVisible, tabsCtx, hostConfig.id, hostConfig.instanceId]);
 
     useEffect(() => {
       const checkAuth = () => {
@@ -661,6 +720,18 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         return;
       }
 
+      // Don't burn reconnect attempts on a hidden tab. xterm is
+      // display:none in the background, so cols/rows read as 0 and
+      // the new PTY would be created with bad geometry; three quick
+      // failures then flip shouldNotReconnectRef and the tab is dead
+      // forever. Bail without incrementing the attempt counter — the
+      // visibility-gated connect effect (search isVisible in this
+      // file) will open a fresh connection the moment the tab is
+      // shown again.
+      if (!isVisibleRef.current) {
+        return;
+      }
+
       if (reconnectAttempts.current >= maxReconnectAttempts) {
         updateConnectionError(t("terminal.maxReconnectAttemptsReached"));
         setIsConnecting(false);
@@ -899,6 +970,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             }),
           );
         }
+        // BEL (\x07) from a TUI is a strong "I want attention" signal —
+        // some installers/prompts ring it when waiting on input, so
+        // promote a bell into an idle pulse even if output is still
+        // flowing.
+        terminal.onBell(() => {
+          setTabIdle(true);
+        });
         terminal.onData((data) => {
           // Pass everything through, including CSI size report
           // responses (\x1b[<n>;<h>;<w>t) that xterm emits when a
@@ -935,8 +1013,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 terminal.write(bytes);
               } else {
                 const syntaxHighlightingEnabled =
-                  localStorage.getItem("terminalSyntaxHighlighting") ===
-                  "true";
+                  localStorage.getItem("terminalSyntaxHighlighting") === "true";
 
                 const outputData = syntaxHighlightingEnabled
                   ? highlightTerminalOutput(msg.data)
@@ -1116,7 +1193,12 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
                 );
               }
             }, 100);
+          } else if (msg.type === "idle") {
+            setTabIdle(true);
+          } else if (msg.type === "active") {
+            setTabIdle(false);
           } else if (msg.type === "disconnected") {
+            setTabIdle(false);
             wasDisconnectedBySSH.current = true;
             setIsConnected(false);
             if (terminal) {
@@ -1858,7 +1940,8 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
 
           const persistenceEnabled =
-            localStorage.getItem("enableTerminalSessionPersistence") !== "false";
+            localStorage.getItem("enableTerminalSessionPersistence") !==
+            "false";
           if (
             !persistenceEnabled &&
             sessionIdRef.current &&
@@ -1894,10 +1977,7 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           !e.ctrlKey &&
           !e.shiftKey &&
           !e.metaKey &&
-          (e.key === "h" ||
-            e.key === "j" ||
-            e.key === "k" ||
-            e.key === "l")
+          (e.key === "h" || e.key === "j" || e.key === "k" || e.key === "l")
         ) {
           return false;
         }
@@ -1939,6 +2019,30 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         }
 
+        // Paste: Ctrl+Shift+V, Cmd+V, or Shift+Insert. Plain Ctrl+V is
+        // intentionally NOT bound to paste so vim's visual-block (^V),
+        // bash's literal-next, etc. work — those need the raw 0x16 byte
+        // delivered to the PTY. The browser would otherwise auto-paste
+        // via the hidden textarea's paste event, so we preventDefault
+        // and inject ^V ourselves.
+        if (
+          ((e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) ||
+            (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) ||
+            (e.shiftKey &&
+              !e.ctrlKey &&
+              !e.altKey &&
+              !e.metaKey &&
+              e.key === "Insert")) &&
+          (e.key.toLowerCase() === "v" || e.key === "Insert")
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          readTextFromClipboard().then((text) => {
+            if (text) terminal.paste(text);
+          });
+          return false;
+        }
+
         if (
           e.ctrlKey &&
           !e.shiftKey &&
@@ -1946,11 +2050,41 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           !e.metaKey &&
           e.key.toLowerCase() === "v"
         ) {
+          if (e.type !== "keydown") return false;
           e.preventDefault();
           e.stopPropagation();
-          readTextFromClipboard().then((text) => {
-            if (text) terminal.paste(text);
-          });
+          if (webSocketRef.current?.readyState === 1) {
+            webSocketRef.current.send(
+              JSON.stringify({ type: "input", data: "\x16" }),
+            );
+          }
+          return false;
+        }
+
+        // Ctrl+X (no other modifiers) inside a focused terminal opens
+        // the tab's rename input. This shadows readline/emacs/nano's
+        // Ctrl+X — accepted tradeoff per the user's explicit request.
+        // Shift+Ctrl+X / Alt+Ctrl+X still pass through to the PTY.
+        if (
+          e.ctrlKey &&
+          !e.shiftKey &&
+          !e.altKey &&
+          !e.metaKey &&
+          e.key.toLowerCase() === "x"
+        ) {
+          if (e.type !== "keydown") return false;
+          e.preventDefault();
+          e.stopPropagation();
+          const ctx = tabsCtxRef.current;
+          if (ctx) {
+            const match = ctx.tabs.find(
+              (tt) =>
+                tt.type === "terminal" &&
+                tt.hostConfig?.id === hostConfig.id &&
+                tt.instanceId === hostConfig.instanceId,
+            );
+            if (match) ctx.requestRenameTab(match.id);
+          }
           return false;
         }
 

@@ -113,6 +113,14 @@ interface SSHToolsSidebarProps {
    */
   onTogglePersisted?: (open: boolean) => void;
   /**
+   * Pin the sidebar open without altering any Ctrl-lock state. Used by
+   * incidental "keep this from collapsing under me" gestures (e.g.
+   * double-clicking the sidebar body) which shouldn't be treated as a
+   * deliberate exit from a Ctrl-locked mode. Falls back to
+   * `onTogglePersisted` when not provided.
+   */
+  onPinPersistedOpen?: () => void;
+  /**
    * Fire when the cursor enters the sidebar strip or the sidebar itself —
    * used to drive transient hover-open.
    */
@@ -155,6 +163,7 @@ export function SSHToolsSidebar({
   isOpen,
   isPersistedOpen,
   onTogglePersisted,
+  onPinPersistedOpen,
   onHoverEnter,
   onHoverLeave,
   onClose,
@@ -989,7 +998,8 @@ export function SSHToolsSidebar({
     }
   };
 
-  const isPersistedClosed = isPersistedOpen != null ? !isPersistedOpen : !isOpen;
+  const isPersistedClosed =
+    isPersistedOpen != null ? !isPersistedOpen : !isOpen;
 
   const handleTogglePinned = () => {
     if (onTogglePersisted) {
@@ -1054,13 +1064,12 @@ export function SSHToolsSidebar({
                 if (isPersistedOpen) return;
                 const target = e.target as HTMLElement;
                 if (
-                  target.closest(
-                    'button, input, textarea, a, [role="button"]',
-                  )
+                  target.closest('button, input, textarea, a, [role="button"]')
                 ) {
                   return;
                 }
-                onTogglePersisted?.(true);
+                if (onPinPersistedOpen) onPinPersistedOpen();
+                else onTogglePersisted?.(true);
               }}
             >
               <SidebarHeader>
@@ -1659,7 +1668,6 @@ export function SSHToolsSidebar({
                       )}
                     </div>
                   </TabsContent>
-
                 </Tabs>
               </SidebarContent>
               {isOpen && (
