@@ -223,6 +223,50 @@ function AppContent({
         return;
       }
 
+      // Ctrl+Tab — jump focus into the first available terminal so the
+      // user can start typing without clicking. If the current tab is
+      // already a terminal, just hand focus to xterm; otherwise switch
+      // to the first terminal tab and focus it on the next tick (after
+      // the tab swap settles into the DOM). Browser default is Ctrl+Tab
+      // = next browser tab, which is useless here, so we preventDefault
+      // unconditionally when a terminal target exists.
+      if (
+        event.key === "Tab" &&
+        event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.repeat
+      ) {
+        const currentIsTerminal = tabs.some(
+          (t) => t.id === currentTab && t.type === "terminal",
+        );
+        const target = currentIsTerminal
+          ? tabs.find((t) => t.id === currentTab)
+          : tabs.find((t) => t.type === "terminal");
+        if (target) {
+          event.preventDefault();
+          event.stopPropagation();
+          const focusTarget = () => {
+            const handle = target.terminalRef?.current as
+              | { focus?: () => void }
+              | undefined;
+            handle?.focus?.();
+          };
+          if (target.id !== currentTab) {
+            setCurrentTab(target.id);
+            // The newly-active Terminal mounts on the next paint; defer
+            // the focus call so xterm exists when we ask it to focus.
+            requestAnimationFrame(() =>
+              requestAnimationFrame(focusTarget),
+            );
+          } else {
+            focusTarget();
+          }
+        }
+        return;
+      }
+
       // Ctrl+; — close the current tab (or focused pane in a split view).
       // Pre-select the closest tab to the left in tab-bar order BEFORE
       // calling removeTab so the user keeps working near where they were

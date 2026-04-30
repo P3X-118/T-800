@@ -73,6 +73,7 @@ interface TerminalHandle {
   sendInput: (data: string) => void;
   notifyResize: () => void;
   refresh: () => void;
+  reconnect: () => void;
 }
 
 interface SSHTerminalProps {
@@ -680,7 +681,28 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           hardRefresh();
         },
         focus: () => {
-          terminal?.focus();
+          // xterm's own focus() targets the helper textarea, but it
+          // silently no-ops if the terminal isn't fully open yet
+          // (single-terminal Ctrl+Tab path: tab swap → fresh mount →
+          // focus called before xterm finished opening). Fall back to
+          // the helper textarea directly via the DOM, and if even that
+          // isn't ready yet, retry on the next paint until it mounts
+          // or we give up. Capped at a handful of frames so a closed
+          // tab can't loop forever.
+          const tryFocus = (attempt: number) => {
+            terminal?.focus();
+            const ta = xtermRef.current?.querySelector(
+              "textarea",
+            ) as HTMLTextAreaElement | null;
+            if (ta) {
+              ta.focus();
+              return;
+            }
+            if (attempt < 10) {
+              requestAnimationFrame(() => tryFocus(attempt + 1));
+            }
+          };
+          tryFocus(0);
         },
         sendInput: (data: string) => {
           if (webSocketRef.current?.readyState === 1) {
@@ -700,6 +722,39 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         },
         refresh: () => hardRefresh(),
+        // Force a fresh connection without remounting the component.
+        // Clears every "give up" guard, kills any pending reconnect
+        // timer, closes the current socket if present, then opens a
+        // new one. Used by the right-click "Refresh" menu so a tab
+        // that landed in "Connection rejected" can recover without a
+        // page reload.
+        reconnect: () => {
+          shouldNotReconnectRef.current = false;
+          isReconnectingRef.current = false;
+          isConnectingRef.current = false;
+          wasDisconnectedBySSH.current = false;
+          reconnectAttempts.current = 0;
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = null;
+          }
+          if (
+            webSocketRef.current &&
+            webSocketRef.current.readyState !== WebSocket.CLOSED
+          ) {
+            try {
+              webSocketRef.current.close();
+            } catch {
+              /* ignore */
+            }
+          }
+          webSocketRef.current = null;
+          if (terminal) {
+            const cols = terminal.cols || 80;
+            const rows = terminal.rows || 24;
+            connectToHost(cols, rows);
+          }
+        },
       }),
       [terminal],
     );
@@ -1120,6 +1175,25 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
             setIsConnecting(false);
             isConnectingRef.current = false;
             updateConnectionError(null);
+            // Resync PTY size now that the shell exists. The cols/rows
+            // baked into the initial connectToHost message are whatever
+            // xterm had when the request went out; any resize fired
+            // between then and shell-ready is silently dropped by the
+            // backend (sshStream is null until conn.shell completes),
+            // which is exactly what produces the visible-wrap-mid-word
+            // bash prompt. Force a fresh fit + send the current cols/
+            // rows, bypassing the dedup so the PTY adopts them.
+            if (terminal && fitAddonRef.current) {
+              try {
+                fitAddonRef.current.fit();
+              } catch {
+                /* ignore */
+              }
+              if (terminal.cols > 0 && terminal.rows > 0) {
+                lastSentSizeRef.current = null;
+                scheduleNotify(terminal.cols, terminal.rows);
+              }
+            }
             if (connectionTimeoutRef.current) {
               clearTimeout(connectionTimeoutRef.current);
               connectionTimeoutRef.current = null;
@@ -1568,13 +1642,31 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           event.wasClean &&
           (event.code === 1005 || event.code === 1000)
         ) {
-          console.error("[WebSocket] Connection rejected by server");
-          addLog({
-            type: "error",
-            stage: "connection",
-            message: t("terminal.connectionRejected"),
-          });
-          updateConnectionError(t("terminal.connectionRejected"));
+          // This branch was historically labelled "Connection rejected
+          // by server", but in practice it almost always fires because
+          // we *self-closed* the socket after receiving a {type:"error"}
+          // frame — the auth-fail handler upstream calls
+          // webSocketRef.current.close() with no args (→ code 1000,
+          // wasClean: true). If a specific error message is already
+          // surfaced, leave it alone instead of replacing it with the
+          // misleading generic line.
+          if (!connectionErrorRef.current) {
+            console.error("[WebSocket] Clean close before connect", {
+              code: event.code,
+              reason: event.reason,
+            });
+            addLog({
+              type: "error",
+              stage: "connection",
+              message: t("terminal.connectionRejected"),
+            });
+            updateConnectionError(t("terminal.connectionRejected"));
+          } else {
+            console.warn(
+              "[WebSocket] Clean close after surfaced error",
+              connectionErrorRef.current,
+            );
+          }
           setIsConnecting(false);
           shouldNotReconnectRef.current = true;
           return;
@@ -1969,15 +2061,20 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         }
 
         // Alt+H/J/K/L is reserved for vim-style split-pane navigation
-        // (AppView listens for it). Returning false here tells xterm
-        // not to consume the key or emit an ESC+letter sequence into
-        // the shell, so the nav handler can take it cleanly.
+        // (AppView listens for it). Match on e.code so the physical
+        // key wins even when Alt produces a dead-key char on macOS
+        // Option / Compose layouts. Returning false tells xterm not to
+        // consume the key or emit an ESC+letter sequence into the
+        // shell, so the nav handler can take it cleanly.
         if (
           e.altKey &&
           !e.ctrlKey &&
           !e.shiftKey &&
           !e.metaKey &&
-          (e.key === "h" || e.key === "j" || e.key === "k" || e.key === "l")
+          (e.code === "KeyH" ||
+            e.code === "KeyJ" ||
+            e.code === "KeyK" ||
+            e.code === "KeyL")
         ) {
           return false;
         }

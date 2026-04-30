@@ -55,6 +55,7 @@ interface TabData {
       fit?: () => void;
       notifyResize?: () => void;
       refresh?: () => void;
+      reconnect?: () => void;
     };
   };
   hostConfig?: any;
@@ -299,14 +300,31 @@ export function AppView({
   // view. User-specified mapping: h=left, j=up, k=down, l=right.
   // Geometry-based (panel bounding rects) so it handles arbitrarily
   // nested splits correctly. Alt (not Ctrl) so xterm.js doesn't swallow
-  // the keystroke inside the focused terminal.
+  // the keystroke inside the focused terminal. Match on e.code so the
+  // physical key wins even when Alt produces a dead-key char on macOS
+  // Option / Compose layouts.
   useEffect(() => {
     const handleVimNav = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey || e.repeat) {
         return;
       }
-      const key = e.key;
-      if (key !== "h" && key !== "j" && key !== "k" && key !== "l") return;
+      const code = e.code;
+      if (
+        code !== "KeyH" &&
+        code !== "KeyJ" &&
+        code !== "KeyK" &&
+        code !== "KeyL"
+      ) {
+        return;
+      }
+      const key =
+        code === "KeyH"
+          ? "h"
+          : code === "KeyJ"
+            ? "j"
+            : code === "KeyK"
+              ? "k"
+              : "l";
 
       const leafIds = getLeafIds(splitLayout);
       if (leafIds.length < 2 || currentTab == null) return;
@@ -1266,6 +1284,23 @@ export function AppView({
                     ? "none"
                     : finalStyle.pointerEvents,
               }}
+              onContextMenu={
+                t.type === "terminal"
+                  ? (e) => {
+                      // xterm's own contextmenu listener stopPropagation()s
+                      // the event when right-click-copy-paste is enabled, so
+                      // this only fires when the user has clipboard mode off
+                      // — i.e. they expect the app context menu instead.
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPanelContextMenu({
+                        tabId: t.id,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }
+                  : undefined
+              }
             >
               <div
                 className="absolute inset-0 rounded-md overflow-hidden"
@@ -2160,6 +2195,24 @@ export function AppView({
           >
             <Copy className="w-3.5 h-3.5" />
             Duplicate
+          </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              const tab = tabs.find(
+                (t: TabData) => t.id === panelContextMenu.tabId,
+              );
+              const handle = tab?.terminalRef?.current;
+              if (handle?.reconnect) {
+                handle.reconnect();
+              } else {
+                handle?.refresh?.();
+              }
+              setPanelContextMenu(null);
+            }}
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+            Refresh
           </button>
           <div className="border-t border-edge my-1" />
           <button
