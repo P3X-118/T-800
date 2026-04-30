@@ -73,6 +73,7 @@ interface TerminalHandle {
   sendInput: (data: string) => void;
   notifyResize: () => void;
   refresh: () => void;
+  reconnect: () => void;
 }
 
 interface SSHTerminalProps {
@@ -700,6 +701,39 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         },
         refresh: () => hardRefresh(),
+        // Force a fresh connection without remounting the component.
+        // Clears every "give up" guard, kills any pending reconnect
+        // timer, closes the current socket if present, then opens a
+        // new one. Used by the right-click "Refresh" menu so a tab
+        // that landed in "Connection rejected" can recover without a
+        // page reload.
+        reconnect: () => {
+          shouldNotReconnectRef.current = false;
+          isReconnectingRef.current = false;
+          isConnectingRef.current = false;
+          wasDisconnectedBySSH.current = false;
+          reconnectAttempts.current = 0;
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = null;
+          }
+          if (
+            webSocketRef.current &&
+            webSocketRef.current.readyState !== WebSocket.CLOSED
+          ) {
+            try {
+              webSocketRef.current.close();
+            } catch {
+              /* ignore */
+            }
+          }
+          webSocketRef.current = null;
+          if (terminal) {
+            const cols = terminal.cols || 80;
+            const rows = terminal.rows || 24;
+            connectToHost(cols, rows);
+          }
+        },
       }),
       [terminal],
     );

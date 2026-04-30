@@ -55,6 +55,7 @@ interface TabData {
       fit?: () => void;
       notifyResize?: () => void;
       refresh?: () => void;
+      reconnect?: () => void;
     };
   };
   hostConfig?: any;
@@ -1266,6 +1267,23 @@ export function AppView({
                     ? "none"
                     : finalStyle.pointerEvents,
               }}
+              onContextMenu={
+                t.type === "terminal"
+                  ? (e) => {
+                      // xterm's own contextmenu listener stopPropagation()s
+                      // the event when right-click-copy-paste is enabled, so
+                      // this only fires when the user has clipboard mode off
+                      // — i.e. they expect the app context menu instead.
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPanelContextMenu({
+                        tabId: t.id,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }
+                  : undefined
+              }
             >
               <div
                 className="absolute inset-0 rounded-md overflow-hidden"
@@ -2160,6 +2178,24 @@ export function AppView({
           >
             <Copy className="w-3.5 h-3.5" />
             Duplicate
+          </button>
+          <button
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+            onClick={() => {
+              const tab = tabs.find(
+                (t: TabData) => t.id === panelContextMenu.tabId,
+              );
+              const handle = tab?.terminalRef?.current;
+              if (handle?.reconnect) {
+                handle.reconnect();
+              } else {
+                handle?.refresh?.();
+              }
+              setPanelContextMenu(null);
+            }}
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+            Refresh
           </button>
           <div className="border-t border-edge my-1" />
           <button
