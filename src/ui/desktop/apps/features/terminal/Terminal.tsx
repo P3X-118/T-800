@@ -1602,13 +1602,31 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           event.wasClean &&
           (event.code === 1005 || event.code === 1000)
         ) {
-          console.error("[WebSocket] Connection rejected by server");
-          addLog({
-            type: "error",
-            stage: "connection",
-            message: t("terminal.connectionRejected"),
-          });
-          updateConnectionError(t("terminal.connectionRejected"));
+          // This branch was historically labelled "Connection rejected
+          // by server", but in practice it almost always fires because
+          // we *self-closed* the socket after receiving a {type:"error"}
+          // frame — the auth-fail handler upstream calls
+          // webSocketRef.current.close() with no args (→ code 1000,
+          // wasClean: true). If a specific error message is already
+          // surfaced, leave it alone instead of replacing it with the
+          // misleading generic line.
+          if (!connectionErrorRef.current) {
+            console.error("[WebSocket] Clean close before connect", {
+              code: event.code,
+              reason: event.reason,
+            });
+            addLog({
+              type: "error",
+              stage: "connection",
+              message: t("terminal.connectionRejected"),
+            });
+            updateConnectionError(t("terminal.connectionRejected"));
+          } else {
+            console.warn(
+              "[WebSocket] Clean close after surfaced error",
+              connectionErrorRef.current,
+            );
+          }
           setIsConnecting(false);
           shouldNotReconnectRef.current = true;
           return;
