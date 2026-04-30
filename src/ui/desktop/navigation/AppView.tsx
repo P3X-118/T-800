@@ -296,18 +296,18 @@ export function AppView({
     return () => window.removeEventListener("keydown", handleEsc);
   }, [focusedTabId]);
 
-  // Alt/Meta + H/J/K/L — vim-style directional pane navigation inside a
-  // split view. User-specified mapping: h=left, j=up, k=down, l=right.
+  // Alt+H/J/K/L — vim-style directional pane navigation inside a split
+  // view. User-specified mapping: h=left, j=up, k=down, l=right.
   // Geometry-based (panel bounding rects) so it handles arbitrarily
-  // nested splits correctly. Either Alt or Meta is accepted (Alt on
-  // Linux/Windows, Meta = Cmd on macOS / Super on Linux) so the same
-  // muscle memory works across platforms; we match on e.code so the
-  // physical h/j/k/l keys win even when Alt is remapped to produce
-  // dead-keys (macOS Option, Compose, etc.).
+  // nested splits correctly. Alt (not Ctrl) so xterm.js doesn't swallow
+  // the keystroke inside the focused terminal. Match on e.code so the
+  // physical key wins even when Alt produces a dead-key char on macOS
+  // Option / Compose layouts.
   useEffect(() => {
     const handleVimNav = (e: KeyboardEvent) => {
-      const modifier = e.altKey !== e.metaKey; // exactly one of Alt | Meta
-      if (!modifier || e.ctrlKey || e.shiftKey || e.repeat) return;
+      if (!e.altKey || e.ctrlKey || e.shiftKey || e.metaKey || e.repeat) {
+        return;
+      }
       const code = e.code;
       if (
         code !== "KeyH" &&
