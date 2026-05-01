@@ -417,9 +417,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     // When this terminal tab becomes hidden, stamp lastBlurAt so the
     // idle pulse is suppressed for ~5s after a context switch. When it
     // becomes visible again, clear any stale idle flag.
+    // Reads tabsCtx via the ref so the effect doesn't re-fire on every
+    // context value rotation — otherwise updateTab below rotates the
+    // context, which re-fires this effect, which calls updateTab with
+    // a fresh Date.now()… → React error #185 (max update depth).
     useEffect(() => {
-      if (!tabsCtx) return;
-      const match = tabsCtx.tabs.find(
+      const ctx = tabsCtxRef.current;
+      if (!ctx) return;
+      const match = ctx.tabs.find(
         (t) =>
           t.type === "terminal" &&
           t.hostConfig?.id === hostConfig.id &&
@@ -427,11 +432,11 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
       );
       if (!match) return;
       if (isVisible) {
-        if (match.isIdle) tabsCtx.updateTab(match.id, { isIdle: false });
+        if (match.isIdle) ctx.updateTab(match.id, { isIdle: false });
       } else {
-        tabsCtx.updateTab(match.id, { lastBlurAt: Date.now() });
+        ctx.updateTab(match.id, { lastBlurAt: Date.now() });
       }
-    }, [isVisible, tabsCtx, hostConfig.id, hostConfig.instanceId]);
+    }, [isVisible, hostConfig.id, hostConfig.instanceId]);
 
     useEffect(() => {
       const checkAuth = () => {
