@@ -360,9 +360,21 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
     const lastSentSizeRef = useRef<{ cols: number; rows: number } | null>(null);
     const pendingSizeRef = useRef<{ cols: number; rows: number } | null>(null);
     const notifyTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const lastFittedSizeRef = useRef<{ cols: number; rows: number } | null>(
+    // Dedup the no-op fit on the container pixel size, not the resulting
+    // cols/rows. Keying on cols/rows means: if a bad fit lands on cols=10
+    // and the container then grows back, terminal.cols is still 10 and
+    // matches the cached lastFittedSize, so performFit bails forever and
+    // the PTY stays stuck at 10 columns.
+    const lastFittedPxRef = useRef<{ width: number; height: number } | null>(
       null,
     );
+    // A real terminal is never 40 cols/3 rows on purpose. Anything below
+    // this threshold is a transient layout artifact — sidebar animating,
+    // split-pane wrapper briefly display:none, etc. — and must not be
+    // forwarded to the PTY.
+    const MIN_SANE_COLS = 40;
+    const MIN_SANE_ROWS = 5;
+    const MIN_SANE_PX = 200;
     const DEBOUNCE_MS = 140;
 
     const logTerminalActivity = async () => {
@@ -486,12 +498,21 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         return;
       }
 
-      const lastSize = lastFittedSizeRef.current;
-      if (
-        lastSize &&
-        lastSize.cols === terminal.cols &&
-        lastSize.rows === terminal.rows
-      ) {
+      // Refuse to fit against a clearly-too-small container. Mid-
+      // animation snapshots (sidebar pin/unpin, pane resize, popup
+      // mount) can briefly drop the terminal width to a few dozen
+      // pixels, and FitAddon will dutifully translate that into
+      // cols=10. The ResizeObserver fires again once the layout
+      // settles, so skipping the bad sample is the right call.
+      const root = xtermRef.current;
+      const w = root?.clientWidth ?? 0;
+      const h = root?.clientHeight ?? 0;
+      if (w < MIN_SANE_PX || h < MIN_SANE_PX) {
+        return;
+      }
+
+      const lastPx = lastFittedPxRef.current;
+      if (lastPx && lastPx.width === w && lastPx.height === h) {
         return;
       }
 
@@ -499,12 +520,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
       try {
         fitAddonRef.current?.fit();
-        if (terminal && terminal.cols > 0 && terminal.rows > 0) {
+        if (
+          terminal &&
+          terminal.cols >= MIN_SANE_COLS &&
+          terminal.rows >= MIN_SANE_ROWS
+        ) {
           scheduleNotify(terminal.cols, terminal.rows);
-          lastFittedSizeRef.current = {
-            cols: terminal.cols,
-            rows: terminal.rows,
-          };
+          lastFittedPxRef.current = { width: w, height: h };
         }
         setIsFitted(true);
       } finally {
@@ -611,6 +633,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
     function scheduleNotify(cols: number, rows: number) {
       if (!(cols > 0 && rows > 0)) return;
+      // Backstop: a fit that lands on a tiny size is always a layout
+      // glitch, never a real terminal. If we let it through, the PTY
+      // adopts cols≈10 and the user's bash prompt suddenly wraps
+      // mid-word at column 10 — which looks exactly like "the cursor
+      // jumped to position 0 in the middle of typing." Drop the bad
+      // sample; the next ResizeObserver tick will resync once layout
+      // settles.
+      if (cols < MIN_SANE_COLS || rows < MIN_SANE_ROWS) return;
       pendingSizeRef.current = { cols, rows };
       if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
       notifyTimerRef.current = setTimeout(() => {
@@ -1922,15 +1952,26 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
 
       terminal.open(xtermRef.current);
 
-      fitAddonRef.current?.fit();
-      if (terminal.cols < 10 || terminal.rows < 3) {
-        requestAnimationFrame(() => {
-          fitAddonRef.current?.fit();
+      // Initial fit. If the container is mid-layout (split-pane wrapper
+      // briefly display:none, sidebar still animating), the first fit
+      // can land on a tiny cols/rows. Retry across a few rAF ticks
+      // until we land on something sane or give up.
+      const tryInitialFit = (attempt: number) => {
+        fitAddonRef.current?.fit();
+        if (
+          terminal.cols >= MIN_SANE_COLS &&
+          terminal.rows >= MIN_SANE_ROWS
+        ) {
           setIsFitted(true);
-        });
-      } else {
-        setIsFitted(true);
-      }
+          return;
+        }
+        if (attempt < 8) {
+          requestAnimationFrame(() => tryInitialFit(attempt + 1));
+        } else {
+          setIsFitted(true);
+        }
+      };
+      tryInitialFit(0);
 
       const element = xtermRef.current;
       const handleContextMenu = async (e: MouseEvent) => {
@@ -2418,32 +2459,36 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
         return;
       }
 
-      if (terminal.cols < 10 || terminal.rows < 3) {
-        requestAnimationFrame(() => {
-          // Fit FIRST — duplicate tabs enter this branch with cols=0
-          // because xterm was opened while the split-view pane was
-          // briefly display:none. Measuring after rAF (when the
-          // wrapper is display:block) gives real cols/rows so the
-          // connection starts with correct dimensions.
-          fitAddonRef.current?.fit();
-          if (terminal.cols > 0 && terminal.rows > 0) {
-            setIsConnecting(true);
-            scheduleNotify(terminal.cols, terminal.rows);
-            connectToHost(terminal.cols, terminal.rows);
-          }
-        });
-        return;
-      }
-
+      // Fit until we land on sane dims, then connect. Duplicate tabs
+      // and split-view panes can enter here with cols=0 (wrapper was
+      // briefly display:none) or with a transient tiny cols (wrapper
+      // mid-layout), and shipping that to the PTY produces a shell
+      // that wraps mid-prompt. Retry across rAF ticks; only ship the
+      // connect once cols/rows clear MIN_SANE_*.
       setIsConnecting(true);
-      fitAddonRef.current?.fit();
-      requestAnimationFrame(() => {
+      const tryConnect = (attempt: number) => {
         fitAddonRef.current?.fit();
-        if (terminal.cols > 0 && terminal.rows > 0) {
+        if (
+          terminal.cols >= MIN_SANE_COLS &&
+          terminal.rows >= MIN_SANE_ROWS
+        ) {
           scheduleNotify(terminal.cols, terminal.rows);
           connectToHost(terminal.cols, terminal.rows);
+          return;
         }
-      });
+        if (attempt < 8) {
+          requestAnimationFrame(() => tryConnect(attempt + 1));
+          return;
+        }
+        // Give up waiting and connect with a sane default — the
+        // connect handler re-fits + resyncs the PTY once the shell
+        // is ready, and the ResizeObserver will keep correcting it.
+        const cols = Math.max(terminal.cols, 80);
+        const rows = Math.max(terminal.rows, 24);
+        scheduleNotify(cols, rows);
+        connectToHost(cols, rows);
+      };
+      tryConnect(0);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [terminal, hostConfig.id, isVisible, isConnected, isConnecting]);
 
