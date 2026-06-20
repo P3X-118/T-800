@@ -1977,7 +1977,7 @@ wss.on("connection", async (ws: WebSocket, req) => {
           ? hostKeepaliveInterval
           : 30000,
       keepaliveCountMax:
-        typeof hostKeepaliveCountMax === "number" ? hostKeepaliveCountMax : 3,
+        typeof hostKeepaliveCountMax === "number" ? hostKeepaliveCountMax : 15,
       readyTimeout: 120000,
       tcpKeepAlive: true,
       tcpKeepAliveInitialDelay: 30000,
