@@ -239,24 +239,44 @@ export function TabProvider({ children }: TabProviderProps) {
 
   // Capture per-group sizes from react-resizable-panels into the
   // layout tree so a manual drag survives re-renders and reloads.
-  const setNodeSizes = useCallback((path: string, sizes: number[]) => {
-    setSplitLayoutStateRaw((prev) => setSizesAtPath(prev, path, sizes));
-  }, []);
-  const [splitLayout, setSplitLayoutStateRaw] =
-    useState<SplitLayoutNode | null>(() => {
-      if (!isPersistenceEnabled()) return null;
-      try {
-        const saved = localStorage.getItem(splitLayoutKey());
-        if (!saved) return null;
-        const parsed = JSON.parse(saved) as SplitLayoutNode;
-        // Persisted single-leaf isn't a real split — discard.
-        if (parsed && parsed.type === "leaf") return null;
-        return parsed;
-      } catch {
-        return null;
-      }
-    });
-  // Always normalize: a single-leaf root isn't a real split.
+  // Split layouts are keyed by group id. Phase A runs a single implicit
+  // "default" group, so behaviour is identical to the old single-layout
+  // model; multi-group create/switch arrives in a later phase. The map
+  // is restored from the existing single-layout localStorage key into
+  // the default slot (no on-disk format change yet).
+  const [splitLayouts, setSplitLayoutsRaw] = useState<
+    Record<string, SplitLayoutNode | null>
+  >(() => {
+    if (!isPersistenceEnabled()) return {};
+    try {
+      const saved = localStorage.getItem(splitLayoutKey());
+      if (!saved) return {};
+      const parsed = JSON.parse(saved) as SplitLayoutNode;
+      // Persisted single-leaf isn't a real split — discard.
+      if (parsed && parsed.type === "leaf") return {};
+      return { default: parsed };
+    } catch {
+      return {};
+    }
+  });
+  // activeGroupId selects which group's layout is on screen. A ref
+  // mirrors it so functional state updaters read the current group
+  // without a stale closure.
+  const [activeGroupId] = useState<string>("default");
+  const activeGroupIdRef = useRef(activeGroupId);
+  useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+  }, [activeGroupId]);
+
+  // The active group's layout. Every existing consumer (AppView, the
+  // split ops, allSplitScreenTab) reads this exactly as before.
+  const splitLayout = useMemo<SplitLayoutNode | null>(
+    () => splitLayouts[activeGroupId] ?? null,
+    [splitLayouts, activeGroupId],
+  );
+
+  // Always normalize: a single-leaf root isn't a real split. Mutates
+  // only the active group's entry in the layouts map.
   const setSplitLayoutState = useCallback(
     (
       updater:
@@ -264,19 +284,28 @@ export function TabProvider({ children }: TabProviderProps) {
         | null
         | ((prev: SplitLayoutNode | null) => SplitLayoutNode | null),
     ) => {
-      setSplitLayoutStateRaw((prev) => {
-        const next =
+      setSplitLayoutsRaw((prevMap) => {
+        const gid = activeGroupIdRef.current;
+        const prev = prevMap[gid] ?? null;
+        const raw =
           typeof updater === "function"
             ? (
                 updater as (p: SplitLayoutNode | null) => SplitLayoutNode | null
               )(prev)
             : updater;
-        if (!next) return null;
-        if (next.type === "leaf") return null;
-        return next;
+        const next = !raw ? null : raw.type === "leaf" ? null : raw;
+        if (next === prev) return prevMap;
+        return { ...prevMap, [gid]: next };
       });
     },
     [],
+  );
+
+  const setNodeSizes = useCallback(
+    (path: string, sizes: number[]) => {
+      setSplitLayoutState((prev) => setSizesAtPath(prev, path, sizes));
+    },
+    [setSplitLayoutState],
   );
   const allSplitScreenTab = useMemo(
     () => getLeafIds(splitLayout),
