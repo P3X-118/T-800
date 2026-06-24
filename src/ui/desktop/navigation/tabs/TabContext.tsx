@@ -27,6 +27,7 @@ import {
   tabsKey,
   currentTabKey,
   splitLayoutKey,
+  groupsKey,
   startSessionHeartbeat,
   listAllSessionStorageKeys,
 } from "./windowId.js";
@@ -162,12 +163,18 @@ export function clearT800SessionStorage() {
   localStorage.removeItem("t800_tabs");
   localStorage.removeItem("t800_currentTab");
   localStorage.removeItem("t800_splitLayout");
-  const { tabsKeys, currentTabKeys, splitLayoutKeys, heartbeatKeys } =
-    listAllSessionStorageKeys();
+  const {
+    tabsKeys,
+    currentTabKeys,
+    splitLayoutKeys,
+    groupsKeys,
+    heartbeatKeys,
+  } = listAllSessionStorageKeys();
   const keysToRemove: string[] = [
     ...tabsKeys,
     ...currentTabKeys,
     ...splitLayoutKeys,
+    ...groupsKeys,
     ...heartbeatKeys,
   ];
   // t800_session_<hostId>_<instanceId> (per-terminal reconnect tokens)
@@ -258,16 +265,43 @@ export function TabProvider({ children }: TabProviderProps) {
     const empty = { order: [], names: {}, layouts: {} };
     if (!isPersistenceEnabled()) return empty;
     try {
-      const saved = localStorage.getItem(splitLayoutKey());
-      if (!saved) return empty;
-      const parsed = JSON.parse(saved) as SplitLayoutNode;
-      // Persisted single-leaf isn't a real split — discard.
-      if (!parsed || parsed.type === "leaf") return empty;
-      return {
-        order: ["default"],
-        names: { default: "Multiview 1" },
-        layouts: { default: parsed },
-      };
+      // Preferred: the multi-group blob.
+      const blob = localStorage.getItem(groupsKey());
+      if (blob) {
+        const parsed = JSON.parse(blob) as {
+          order?: string[];
+          names?: Record<string, string>;
+          layouts?: Record<string, SplitLayoutNode>;
+        };
+        if (parsed && Array.isArray(parsed.order) && parsed.layouts) {
+          const order: string[] = [];
+          const names: Record<string, string> = {};
+          const layouts: Record<string, SplitLayoutNode> = {};
+          for (const id of parsed.order) {
+            const l = parsed.layouts[id];
+            // Only keep real splits (>=2 panes).
+            if (l && l.type === "split") {
+              order.push(id);
+              names[id] = parsed.names?.[id] ?? "Multiview";
+              layouts[id] = l;
+            }
+          }
+          return { order, names, layouts };
+        }
+      }
+      // Migrate the legacy single-layout key into one group.
+      const legacy = localStorage.getItem(splitLayoutKey());
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as SplitLayoutNode;
+        if (parsed && parsed.type === "split") {
+          return {
+            order: ["default"],
+            names: { default: "Multiview 1" },
+            layouts: { default: parsed },
+          };
+        }
+      }
+      return empty;
     } catch {
       return empty;
     }
@@ -506,12 +540,14 @@ export function TabProvider({ children }: TabProviderProps) {
   }, [tabs, currentTab]);
 
   useEffect(() => {
-    if (isPersistenceEnabled() && splitLayout) {
-      localStorage.setItem(splitLayoutKey(), JSON.stringify(splitLayout));
+    if (isPersistenceEnabled() && groupState.order.length > 0) {
+      localStorage.setItem(groupsKey(), JSON.stringify(groupState));
     } else {
-      localStorage.removeItem(splitLayoutKey());
+      localStorage.removeItem(groupsKey());
     }
-  }, [splitLayout]);
+    // Superseded by the groups blob — clear the legacy single-layout key.
+    localStorage.removeItem(splitLayoutKey());
+  }, [groupState]);
 
   // Heartbeat proves this tab is alive, so sibling tabs (duplicate
   // tab / window.open with cloned sessionStorage) can see that this
@@ -524,23 +560,39 @@ export function TabProvider({ children }: TabProviderProps) {
   const didPruneRef = useRef(false);
   useEffect(() => {
     if (didPruneRef.current) return;
-    if (!splitLayout) {
-      didPruneRef.current = true;
-      return;
-    }
-    const validIds = new Set(tabs.map((t) => t.id));
-    const leafIds = getLeafIds(splitLayout);
-    const hasMissing = leafIds.some((id) => !validIds.has(id));
-    if (hasMissing) {
-      const keep = leafIds.filter((id) => validIds.has(id));
-      if (keep.length === 0) {
-        setSplitLayoutState(null);
-      } else {
-        setSplitLayoutState(pruneLayout(splitLayout, new Set(keep)));
-      }
-    }
     didPruneRef.current = true;
-  }, [tabs, splitLayout]);
+    // Prune EVERY restored group's layout against the live tab list,
+    // dropping any group that collapses below 2 panes.
+    const validIds = new Set(tabs.map((t) => t.id));
+    setGroupState((prev) => {
+      if (prev.order.length === 0) return prev;
+      const order: string[] = [];
+      const names: Record<string, string> = {};
+      const layouts: Record<string, SplitLayoutNode> = {};
+      let changed = false;
+      for (const id of prev.order) {
+        const layout = prev.layouts[id];
+        const leaves = getLeafIds(layout);
+        const keep = leaves.filter((l) => validIds.has(l));
+        if (keep.length === leaves.length) {
+          order.push(id);
+          names[id] = prev.names[id];
+          layouts[id] = layout;
+          continue;
+        }
+        changed = true;
+        if (keep.length >= 2) {
+          const pruned = pruneLayout(layout, new Set(keep));
+          if (pruned && pruned.type !== "leaf") {
+            order.push(id);
+            names[id] = prev.names[id];
+            layouts[id] = pruned;
+          }
+        }
+      }
+      return changed ? { order, names, layouts } : prev;
+    });
+  }, [tabs]);
 
   React.useEffect(() => {
     setTabs((prev) =>
