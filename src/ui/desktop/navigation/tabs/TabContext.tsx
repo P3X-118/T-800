@@ -70,6 +70,12 @@ interface TabContextType {
   currentTab: number | null;
   allSplitScreenTab: number[];
   splitLayout: SplitLayoutNode | null;
+  groups: { id: string; name: string; tabIds: number[] }[];
+  activeGroupId: string | null;
+  switchGroup: (groupId: string) => void;
+  createGroup: (tabIds: number[]) => void;
+  deleteGroup: (groupId: string) => void;
+  renameGroup: (groupId: string, name: string) => void;
   addTab: (tab: Omit<Tab, "id">) => number;
   addTabAfter: (afterTabId: number, tab: Omit<Tab, "id">) => number;
   removeTab: (tabId: number) => void;
@@ -406,6 +412,74 @@ export function TabProvider({ children }: TabProviderProps) {
     },
     [],
   );
+
+  // --- Multiview group lifecycle (Phase B) ---
+  const groupStateRef = useRef(groupState);
+  useEffect(() => {
+    groupStateRef.current = groupState;
+  }, [groupState]);
+
+  // Derived list of groups for the tab bar.
+  const groups = useMemo(
+    () =>
+      groupState.order.map((id) => ({
+        id,
+        name: groupState.names[id] ?? "Multiview",
+        tabIds: getLeafIds(groupState.layouts[id]),
+      })),
+    [groupState],
+  );
+
+  // Focus a group by activating its first pane.
+  const switchGroup = useCallback((groupId: string) => {
+    const layout = groupStateRef.current.layouts[groupId];
+    if (!layout) return;
+    const leaves = getLeafIds(layout);
+    if (leaves.length > 0) setCurrentTab(leaves[0]);
+  }, []);
+
+  // Create a new multiview from >=2 existing tabs and focus it.
+  const createGroup = useCallback((tabIds: number[]) => {
+    const ids = tabIds.slice(0, 12);
+    if (ids.length < 2) return;
+    const layout = defaultLayoutFromIds(ids);
+    if (!layout || layout.type === "leaf") return;
+    const newId = `g_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    setGroupState((prev) => ({
+      order: [...prev.order, newId],
+      names: { ...prev.names, [newId]: `Multiview ${prev.order.length + 1}` },
+      layouts: { ...prev.layouts, [newId]: layout },
+    }));
+    setCurrentTab(ids[0]);
+  }, []);
+
+  // Disband a group; its panes revert to normal top-level tabs.
+  const deleteGroup = useCallback((groupId: string) => {
+    setGroupState((prev) => {
+      if (!prev.layouts[groupId]) return prev;
+      const layouts = { ...prev.layouts };
+      const names = { ...prev.names };
+      delete layouts[groupId];
+      delete names[groupId];
+      return {
+        order: prev.order.filter((x) => x !== groupId),
+        names,
+        layouts,
+      };
+    });
+  }, []);
+
+  // Rename a group (bar pill rename).
+  const renameGroup = useCallback((groupId: string, name: string) => {
+    setGroupState((prev) =>
+      !prev.layouts[groupId] || prev.names[groupId] === name
+        ? prev
+        : { ...prev, names: { ...prev.names, [groupId]: name } },
+    );
+  }, []);
+
   const [initialMaxId] = useState(() => {
     let maxId = 1;
     tabs.forEach((tab) => {
@@ -1012,6 +1086,12 @@ export function TabProvider({ children }: TabProviderProps) {
       currentTab,
       allSplitScreenTab,
       splitLayout,
+      groups,
+      activeGroupId,
+      switchGroup,
+      createGroup,
+      deleteGroup,
+      renameGroup,
       addTab,
       addTabAfter,
       removeTab,
@@ -1041,6 +1121,12 @@ export function TabProvider({ children }: TabProviderProps) {
       currentTab,
       allSplitScreenTab,
       splitLayout,
+      groups,
+      activeGroupId,
+      switchGroup,
+      createGroup,
+      deleteGroup,
+      renameGroup,
       addTab,
       removeTab,
       setSplitScreenTab,
