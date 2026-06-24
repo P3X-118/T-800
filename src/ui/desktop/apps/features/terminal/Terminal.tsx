@@ -74,6 +74,7 @@ interface TerminalHandle {
   notifyResize: () => void;
   refresh: () => void;
   reconnect: () => void;
+  copySelection: () => Promise<boolean>;
 }
 
 interface SSHTerminalProps {
@@ -757,6 +758,13 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           }
         },
         refresh: () => hardRefresh(),
+        copySelection: async () => {
+          if (terminal && terminal.hasSelection()) {
+            const selection = terminal.getSelection();
+            if (selection) return await writeTextToClipboard(selection);
+          }
+          return false;
+        },
         // Force a fresh connection without remounting the component.
         // Clears every "give up" guard, kills any pending reconnect
         // timer, closes the current socket if present, then opens a

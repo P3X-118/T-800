@@ -35,6 +35,7 @@ import {
   Maximize2,
   Minimize2,
   Copy,
+  ClipboardCopy,
   SeparatorVertical,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +46,16 @@ import {
 } from "@/constants/terminal-themes";
 import { useTheme } from "@/components/theme-provider";
 import { SSHAuthDialog } from "@/ui/desktop/navigation/dialogs/SSHAuthDialog.tsx";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog.tsx";
 
 interface TabData {
   id: number;
@@ -56,6 +67,7 @@ interface TabData {
       notifyResize?: () => void;
       refresh?: () => void;
       reconnect?: () => void;
+      copySelection?: () => Promise<boolean>;
     };
   };
   hostConfig?: any;
@@ -267,6 +279,8 @@ export function AppView({
     x: number;
     y: number;
   } | null>(null);
+
+  const [closeRowConfirm, setCloseRowConfirm] = useState<number[] | null>(null);
 
   const [panelEditingTabId, setPanelEditingTabId] = useState<number | null>(
     null,
@@ -2170,6 +2184,31 @@ export function AppView({
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {tabs.find((t: TabData) => t.id === panelContextMenu.tabId)?.type ===
+            "terminal" && (
+            <>
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={async () => {
+                  const tab = tabs.find(
+                    (t: TabData) => t.id === panelContextMenu.tabId,
+                  );
+                  const handle = tab?.terminalRef?.current;
+                  setPanelContextMenu(null);
+                  const ok = await handle?.copySelection?.();
+                  if (ok) {
+                    toast.success("Copied to clipboard");
+                  } else {
+                    toast.info("No text selected");
+                  }
+                }}
+              >
+                <ClipboardCopy className="w-3.5 h-3.5" />
+                Copy
+              </button>
+              <div className="border-t border-edge my-1" />
+            </>
+          )}
           <button
             className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
             onClick={() => {
@@ -2265,16 +2304,15 @@ export function AppView({
           <button
             className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
             onClick={() => {
-              if (splitLayout) {
-                const rowIds = getRowLeafIds(
-                  splitLayout,
-                  panelContextMenu.tabId,
-                );
-                rowIds.forEach((id) => removeTab(id));
-              } else {
-                removeTab(panelContextMenu.tabId);
-              }
+              const rowIds = splitLayout
+                ? getRowLeafIds(splitLayout, panelContextMenu.tabId)
+                : [panelContextMenu.tabId];
               setPanelContextMenu(null);
+              if (rowIds.length > 1) {
+                setCloseRowConfirm(rowIds);
+              } else {
+                rowIds.forEach((id) => removeTab(id));
+              }
             }}
           >
             <Rows2 className="w-3.5 h-3.5" />
@@ -2282,6 +2320,36 @@ export function AppView({
           </button>
         </div>
       )}
+
+      <AlertDialog
+        open={closeRowConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setCloseRowConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close this row?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This closes {closeRowConfirm?.length ?? 0} panes in the row. This
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setCloseRowConfirm(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                closeRowConfirm?.forEach((id) => removeTab(id));
+                setCloseRowConfirm(null);
+              }}
+            >
+              Close row
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
