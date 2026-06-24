@@ -726,12 +726,35 @@ export function TabProvider({ children }: TabProviderProps) {
 
     setTabs((prev) => prev.filter((tab) => tab.id !== tabId));
 
-    setAllSplitScreenTab((prev) => {
-      const newSplits = prev.filter((id) => id !== tabId);
-      if (newSplits.length <= 1) {
-        return [];
+    // Remove the tab from whichever group owns it (across ALL groups, not
+    // just the active one), collapsing a group that drops below 2 panes.
+    setGroupState((prev) => {
+      const order: string[] = [];
+      const names: Record<string, string> = {};
+      const layouts: Record<string, SplitLayoutNode> = {};
+      let changed = false;
+      for (const id of prev.order) {
+        const layout = prev.layouts[id];
+        const leaves = getLeafIds(layout);
+        if (!leaves.includes(tabId)) {
+          order.push(id);
+          names[id] = prev.names[id];
+          layouts[id] = layout;
+          continue;
+        }
+        changed = true;
+        const keep = leaves.filter((l) => l !== tabId);
+        if (keep.length >= 2) {
+          const pruned = pruneLayout(layout, new Set(keep));
+          if (pruned && pruned.type !== "leaf") {
+            order.push(id);
+            names[id] = prev.names[id];
+            layouts[id] = pruned;
+          }
+        }
+        // keep.length < 2 -> group collapses, dropped entirely
       }
-      return newSplits;
+      return changed ? { order, names, layouts } : prev;
     });
 
     if (currentTab === tabId) {
