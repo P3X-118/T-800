@@ -35,6 +35,80 @@ import {
 export type Tab = TabContextTab;
 export type { SplitLayoutNode, DropPosition };
 
+type GroupState = {
+  order: string[];
+  names: Record<string, string>;
+  layouts: Record<string, SplitLayoutNode>;
+};
+
+// Enforce the single-owner invariant: a tab id may live in at most one
+// multiview group. Strip the `claim` leaf ids from every group except
+// `keepGid`, repairing donors — a donor pruned below 2 panes is dissolved
+// (its lone pane reverts to a normal tab). Returns `prev` unchanged when no
+// other group held a claimed id (cheap no-op for ordinary same-group edits).
+function detachClaimedFromOthers(
+  prev: GroupState,
+  keepGid: string | null,
+  claim: Set<number>,
+): GroupState {
+  if (claim.size === 0) return prev;
+  let order = prev.order;
+  let names = prev.names;
+  let layouts = prev.layouts;
+  let mutated = false;
+  for (const id of prev.order) {
+    if (id === keepGid) continue;
+    const layout = layouts[id];
+    if (!layout) continue;
+    const leaves = getLeafIds(layout);
+    if (!leaves.some((l) => claim.has(l))) continue;
+    if (!mutated) {
+      order = [...prev.order];
+      names = { ...prev.names };
+      layouts = { ...prev.layouts };
+      mutated = true;
+    }
+    const keep = leaves.filter((l) => !claim.has(l));
+    const pruned = keep.length >= 2 ? pruneLayout(layout, new Set(keep)) : null;
+    if (pruned && pruned.type === "split") {
+      layouts[id] = pruned;
+    } else {
+      delete layouts[id];
+      delete names[id];
+      order = order.filter((x) => x !== id);
+    }
+  }
+  return mutated ? { order, names, layouts } : prev;
+}
+
+// Repair persisted group state so no tab id appears in more than one group
+// (heals localStorage written by an older build that let a terminal be
+// captured by multiple multiviews). Earlier groups in `order` win; later
+// duplicates are pruned; a group reduced below 2 panes is dropped.
+function normalizeGroups(state: GroupState): GroupState {
+  const seen = new Set<number>();
+  const order: string[] = [];
+  const names: Record<string, string> = {};
+  const layouts: Record<string, SplitLayoutNode> = {};
+  for (const id of state.order) {
+    const layout = state.layouts[id];
+    if (!layout || layout.type !== "split") continue;
+    const leaves = getLeafIds(layout);
+    const keep = leaves.filter((l) => !seen.has(l));
+    if (keep.length < 2) continue;
+    const pruned =
+      keep.length === leaves.length
+        ? layout
+        : pruneLayout(layout, new Set(keep));
+    if (!pruned || pruned.type !== "split") continue;
+    for (const l of keep) seen.add(l);
+    order.push(id);
+    names[id] = state.names[id] ?? "Multiview";
+    layouts[id] = pruned;
+  }
+  return { order, names, layouts };
+}
+
 // Home and Host Manager are pinned to the leftmost positions of the tab
 // bar in this order. enforcePinOrder() is applied after every tabs[]
 // mutation so reorder/add/remove can never put a non-pinned tab to the
@@ -286,7 +360,7 @@ export function TabProvider({ children }: TabProviderProps) {
               layouts[id] = l;
             }
           }
-          return { order, names, layouts };
+          return normalizeGroups({ order, names, layouts });
         }
       }
       // Migrate the legacy single-layout key into one group.
@@ -385,7 +459,12 @@ export function TabProvider({ children }: TabProviderProps) {
             };
           }
           if (next === prevLayout) return prev;
-          return { ...prev, layouts: { ...prev.layouts, [gid]: next } };
+          const base = detachClaimedFromOthers(
+            prev,
+            gid,
+            new Set(getLeafIds(next)),
+          );
+          return { ...base, layouts: { ...base.layouts, [gid]: next } };
         }
 
         // No active group: create one only if a real split was formed.
@@ -393,13 +472,18 @@ export function TabProvider({ children }: TabProviderProps) {
         const newId = `g_${Date.now().toString(36)}_${Math.random()
           .toString(36)
           .slice(2, 8)}`;
+        const base = detachClaimedFromOthers(
+          prev,
+          null,
+          new Set(getLeafIds(next)),
+        );
         return {
-          order: [...prev.order, newId],
+          order: [...base.order, newId],
           names: {
-            ...prev.names,
-            [newId]: `Multiview ${prev.order.length + 1}`,
+            ...base.names,
+            [newId]: `Multiview ${base.order.length + 1}`,
           },
-          layouts: { ...prev.layouts, [newId]: next },
+          layouts: { ...base.layouts, [newId]: next },
         };
       });
     },
@@ -481,11 +565,14 @@ export function TabProvider({ children }: TabProviderProps) {
     const newId = `g_${Date.now().toString(36)}_${Math.random()
       .toString(36)
       .slice(2, 8)}`;
-    setGroupState((prev) => ({
-      order: [...prev.order, newId],
-      names: { ...prev.names, [newId]: `Multiview ${prev.order.length + 1}` },
-      layouts: { ...prev.layouts, [newId]: layout },
-    }));
+    setGroupState((prev) => {
+      const base = detachClaimedFromOthers(prev, null, new Set(ids));
+      return {
+        order: [...base.order, newId],
+        names: { ...base.names, [newId]: `Multiview ${base.order.length + 1}` },
+        layouts: { ...base.layouts, [newId]: layout },
+      };
+    });
     setCurrentTab(ids[0]);
   }, []);
 

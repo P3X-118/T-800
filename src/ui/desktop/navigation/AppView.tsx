@@ -36,6 +36,7 @@ import {
   Minimize2,
   Copy,
   ClipboardCopy,
+  ClipboardPaste,
   SeparatorVertical,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -68,6 +69,7 @@ interface TabData {
       refresh?: () => void;
       reconnect?: () => void;
       copySelection?: () => Promise<boolean>;
+      pasteFromClipboard?: () => Promise<boolean>;
     };
   };
   hostConfig?: any;
@@ -2205,6 +2207,21 @@ export function AppView({
               >
                 <ClipboardCopy className="w-3.5 h-3.5" />
                 Copy
+              </button>
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                onClick={async () => {
+                  const tab = tabs.find(
+                    (t: TabData) => t.id === panelContextMenu.tabId,
+                  );
+                  const handle = tab?.terminalRef?.current;
+                  setPanelContextMenu(null);
+                  const ok = await handle?.pasteFromClipboard?.();
+                  if (!ok) toast.info("Clipboard is empty");
+                }}
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                Paste
               </button>
               <div className="border-t border-edge my-1" />
             </>

@@ -75,6 +75,7 @@ interface TerminalHandle {
   refresh: () => void;
   reconnect: () => void;
   copySelection: () => Promise<boolean>;
+  pasteFromClipboard: () => Promise<boolean>;
 }
 
 interface SSHTerminalProps {
@@ -762,6 +763,14 @@ const TerminalInner = forwardRef<TerminalHandle, SSHTerminalProps>(
           if (terminal && terminal.hasSelection()) {
             const selection = terminal.getSelection();
             if (selection) return await writeTextToClipboard(selection);
+          }
+          return false;
+        },
+        pasteFromClipboard: async () => {
+          const text = await readTextFromClipboard();
+          if (text) {
+            terminal?.paste(text);
+            return true;
           }
           return false;
         },
