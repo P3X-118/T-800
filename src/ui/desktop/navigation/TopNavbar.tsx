@@ -1425,14 +1425,25 @@ export function TopNavbar({
                 "docker",
               ].includes(cur.type);
               if (!splittable) return;
-              const dupId = addTabAfter(currentTab, {
-                type: cur.type,
-                title: cur.title,
-                hostConfig: (cur as { hostConfig?: unknown }).hostConfig,
-                connectionConfig: (cur as { connectionConfig?: unknown })
-                  .connectionConfig,
-              });
-              if (dupId > 0) createGroup([currentTab, dupId]);
+              const makeDup = () =>
+                addTabAfter(currentTab, {
+                  type: cur.type,
+                  title: cur.title,
+                  hostConfig: (cur as { hostConfig?: unknown }).hostConfig,
+                  connectionConfig: (cur as { connectionConfig?: unknown })
+                    .connectionConfig,
+                });
+              if (activeGroupId) {
+                // currentTab already belongs to a multiview — build an
+                // INDEPENDENT new one from fresh panes so we never pull a
+                // terminal out of the existing multiview.
+                const a = makeDup();
+                const b = makeDup();
+                if (a > 0 && b > 0) createGroup([a, b]);
+              } else {
+                const dupId = makeDup();
+                if (dupId > 0) createGroup([currentTab, dupId]);
+              }
             }}
             className="w-[30px] h-[30px] border-edge"
             title={t("nav.newMultiview", "New multiview")}
