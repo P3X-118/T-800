@@ -30,6 +30,7 @@ const SESSION_ID_KEY = "t800_session_id";
 const TABS_PREFIX = "t800_tabs:";
 const CURRENT_TAB_PREFIX = "t800_currentTab:";
 const SPLIT_LAYOUT_PREFIX = "t800_splitLayout:";
+const GROUPS_PREFIX = "t800_groups:";
 const HEARTBEAT_PREFIX = "t800_session_hb:";
 const LEGACY_TABS_KEY = "t800_tabs";
 const LEGACY_CURRENT_TAB_KEY = "t800_currentTab";
@@ -163,6 +164,10 @@ export function splitLayoutKey(): string {
   return `${SPLIT_LAYOUT_PREFIX}${getSessionId()}`;
 }
 
+export function groupsKey(): string {
+  return `${GROUPS_PREFIX}${getSessionId()}`;
+}
+
 // Switch this tab to a different persisted session. Reload so React
 // state is rebuilt from the new session's localStorage keys.
 export function switchToSession(id: string): void {
@@ -183,6 +188,7 @@ export function deletePersistedSession(id: string): void {
     localStorage.removeItem(`${TABS_PREFIX}${id}`);
     localStorage.removeItem(`${CURRENT_TAB_PREFIX}${id}`);
     localStorage.removeItem(`${SPLIT_LAYOUT_PREFIX}${id}`);
+    localStorage.removeItem(`${GROUPS_PREFIX}${id}`);
     localStorage.removeItem(heartbeatKey(id));
   } catch {
     /* ignore */
@@ -231,11 +237,13 @@ export function listAllSessionStorageKeys(): {
   tabsKeys: string[];
   currentTabKeys: string[];
   splitLayoutKeys: string[];
+  groupsKeys: string[];
   heartbeatKeys: string[];
 } {
   const tabsKeys: string[] = [];
   const currentTabKeys: string[] = [];
   const splitLayoutKeys: string[] = [];
+  const groupsKeys: string[] = [];
   const heartbeatKeys: string[] = [];
   try {
     for (let i = 0; i < localStorage.length; i++) {
@@ -244,10 +252,17 @@ export function listAllSessionStorageKeys(): {
       if (key.startsWith(TABS_PREFIX)) tabsKeys.push(key);
       else if (key.startsWith(CURRENT_TAB_PREFIX)) currentTabKeys.push(key);
       else if (key.startsWith(SPLIT_LAYOUT_PREFIX)) splitLayoutKeys.push(key);
+      else if (key.startsWith(GROUPS_PREFIX)) groupsKeys.push(key);
       else if (key.startsWith(HEARTBEAT_PREFIX)) heartbeatKeys.push(key);
     }
   } catch {
     /* ignore */
   }
-  return { tabsKeys, currentTabKeys, splitLayoutKeys, heartbeatKeys };
+  return {
+    tabsKeys,
+    currentTabKeys,
+    splitLayoutKeys,
+    groupsKeys,
+    heartbeatKeys,
+  };
 }

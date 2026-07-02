@@ -81,6 +81,12 @@ export function TopNavbar({
     executeDragSplit,
     addTabAfter,
     renameRequest,
+    groups,
+    activeGroupId,
+    switchGroup,
+    createGroup,
+    deleteGroup,
+    renameGroup,
   } = useTabs() as {
     tabs: TabData[];
     currentTab: number;
@@ -105,6 +111,12 @@ export function TopNavbar({
       tab: { type: string; [key: string]: unknown },
     ) => number;
     renameRequest: { tabId: number; nonce: number } | null;
+    groups: { id: string; name: string; tabIds: number[] }[];
+    activeGroupId: string | null;
+    switchGroup: (groupId: string) => void;
+    createGroup: (tabIds: number[]) => void;
+    deleteGroup: (groupId: string) => void;
+    renameGroup: (groupId: string, name: string) => void;
   };
   const leftPosition =
     state === "collapsed" ? "26px" : "calc(var(--sidebar-width) + 8px)";
@@ -177,7 +189,9 @@ export function TopNavbar({
 
   const [commandHistoryTabActive, setCommandHistoryTabActive] = useState(false);
   const [quickConnectOpen, setQuickConnectOpen] = useState(false);
-  const [splitDropdownOpen, setSplitDropdownOpen] = useState(false);
+  const [splitDropdownGroupId, setSplitDropdownGroupId] = useState<
+    string | null
+  >(null);
   const [emptyAreaContextMenu, setEmptyAreaContextMenu] = useState<{
     x: number;
     y: number;
@@ -311,10 +325,14 @@ export function TopNavbar({
   const [splitPillContextMenu, setSplitPillContextMenu] = useState<{
     x: number;
     y: number;
+    groupId: string;
   } | null>(null);
   const [splitPillEditing, setSplitPillEditing] = useState(false);
   const [splitPillEditValue, setSplitPillEditValue] = useState("");
   const splitPillInputRef = React.useRef<HTMLInputElement | null>(null);
+  // Per-group pill state (multiview bar).
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   React.useEffect(() => {
     if (splitPillEditing && splitPillInputRef.current) {
@@ -356,12 +374,17 @@ export function TopNavbar({
     [splitGroupTabs],
   );
   const shouldCondense = splitGroupTabs.length >= 2 && terminalsCondensed;
-  const displayTabs = shouldCondense
-    ? {
-        condensedSplit: splitGroupTabs,
-        normalTabs: tabs.filter((t: TabData) => !splitGroupIdSet.has(t.id)),
-      }
-    : { condensedSplit: [], normalTabs: tabs };
+  // Every multiview group's member tabs are hidden from the normal strip
+  // and represented by their group's pill instead.
+  const allGroupMemberIds = React.useMemo(() => {
+    const s = new Set<number>();
+    for (const g of groups) for (const id of g.tabIds) s.add(id);
+    return s;
+  }, [groups]);
+  const displayTabs = {
+    condensedSplit: splitGroupTabs,
+    normalTabs: tabs.filter((t: TabData) => !allGroupMemberIds.has(t.id)),
+  };
 
   const handleSaveSplitView = React.useCallback(() => {
     const isDefaultName =
@@ -946,51 +969,7 @@ export function TopNavbar({
             }
           }}
         >
-          {splitDropdownOpen && displayTabs.condensedSplit.length >= 2 && (
-            <div className="absolute top-[42px] left-0 z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[200px] max-h-[300px] overflow-y-auto">
-              {displayTabs.condensedSplit.map((tab) => (
-                <div
-                  key={tab.id}
-                  className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-                  onClick={() => {
-                    setCurrentTab(tab.id);
-                    setSplitDropdownOpen(false);
-                  }}
-                >
-                  <Terminal className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="truncate flex-1 min-w-0">{tab.title}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const newSplitIds = allSplitScreenTab.filter(
-                        (id) => id !== tab.id,
-                      );
-                      setSplitScreenTabs(newSplitIds);
-                      if (newSplitIds.length < 2) {
-                        setSplitDropdownOpen(false);
-                      }
-                    }}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-              <div className="border-t border-edge my-1" />
-              <div
-                className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-                onClick={() => {
-                  setTerminalsCondensed(false);
-                  setSplitDropdownOpen(false);
-                }}
-              >
-                <Maximize2 className="h-3.5 w-3.5 flex-shrink-0" />
-                {t("nav.expandAllTabs")}
-              </div>
-            </div>
-          )}
+          {/* Per-group member dropdowns render inside each group pill below. */}
           {displayTabs.normalTabs.flatMap((tab: TabData, index: number) => {
             const elements: React.ReactNode[] = [];
 
@@ -1259,148 +1238,165 @@ export function TopNavbar({
             )
               ? "ssh_manager"
               : "home";
-            if (
-              tab.type === pillAnchorType &&
-              displayTabs.condensedSplit.length >= 2
-            ) {
-              const pillIsActive =
-                currentTab !== null && splitGroupIdSet.has(currentTab);
-              elements.push(
-                <div
-                  key="condensed-split-pill"
-                  style={{
-                    flex: "1 1 150px",
-                    minWidth: "150px",
-                    maxWidth: "450px",
-                    display: "flex",
-                    position: "relative",
-                  }}
-                >
+            if (tab.type === pillAnchorType && groups.length > 0) {
+              groups.forEach((g) => {
+                const pillIsActive = g.id === activeGroupId;
+                elements.push(
                   <div
-                    className="relative flex items-center gap-1.5 px-3 w-full min-w-0 rounded-t-lg border-t-2 border-l-2 border-r-2 transition-all duration-150 h-[42px] bg-background text-foreground border-border z-10"
+                    key={`group-pill-${g.id}`}
                     style={{
-                      marginBottom: "-2px",
-                      borderBottom: pillIsActive
-                        ? "2px solid var(--foreground)"
-                        : "none",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => {
-                      if (splitGroupTabs.length > 0) {
-                        setCurrentTab(splitGroupTabs[0].id);
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSplitPillContextMenu({
-                        x: e.clientX,
-                        y: e.clientY,
-                      });
+                      flex: "1 1 150px",
+                      minWidth: "150px",
+                      maxWidth: "450px",
+                      display: "flex",
+                      position: "relative",
                     }}
                   >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <Terminal className="h-4 w-4 flex-shrink-0" />
-                      {splitPillEditing ? (
-                        <input
-                          ref={splitPillInputRef}
-                          className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-sm flex-1 min-w-0 h-[22px] leading-[22px]"
-                          value={splitPillEditValue}
-                          onChange={(e) =>
-                            setSplitPillEditValue(e.target.value)
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === "Enter") {
-                              const trimmed = splitPillEditValue.trim();
-                              if (trimmed)
-                                persistSplitViewNameWithSave(trimmed);
-                              setSplitPillEditing(false);
-                            } else if (e.key === "Escape") {
-                              setSplitPillEditing(false);
-                            }
-                          }}
-                          onBlur={() => {
-                            const trimmed = splitPillEditValue.trim();
-                            if (trimmed) persistSplitViewNameWithSave(trimmed);
-                            setSplitPillEditing(false);
-                          }}
-                        />
-                      ) : (
-                        <span className="truncate text-sm flex-1 min-w-0">
-                          {splitViewName}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSplitDropdownOpen(!splitDropdownOpen);
-                      }}
-                      title={t("nav.splitViewTabs")}
-                    >
-                      {splitDropdownOpen ? (
-                        <ChevronUpIcon className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                  {splitPillContextMenu && (
                     <div
-                      className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+                      className="relative flex items-center gap-1.5 px-3 w-full min-w-0 rounded-t-lg border-t-2 border-l-2 border-r-2 transition-all duration-150 h-[42px] bg-background text-foreground border-border z-10"
                       style={{
-                        left: splitPillContextMenu.x,
-                        top: splitPillContextMenu.y,
+                        marginBottom: "-2px",
+                        borderBottom: pillIsActive
+                          ? "2px solid var(--foreground)"
+                          : "none",
+                        cursor: "pointer",
                       }}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={() => switchGroup(g.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSplitPillContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          groupId: g.id,
+                        });
+                      }}
                     >
-                      <button
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-                        onClick={() => {
-                          setSplitPillEditValue(splitViewName);
-                          setSplitPillEditing(true);
-                          setSplitPillContextMenu(null);
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <Terminal className="h-4 w-4 flex-shrink-0" />
+                        {editingGroupId === g.id ? (
+                          <input
+                            ref={splitPillInputRef}
+                            className="bg-transparent border-b border-foreground/40 outline-none text-foreground text-sm flex-1 min-w-0 h-[22px] leading-[22px]"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === "Enter") {
+                                const trimmed = editValue.trim();
+                                if (trimmed) renameGroup(g.id, trimmed);
+                                setEditingGroupId(null);
+                              } else if (e.key === "Escape") {
+                                setEditingGroupId(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              const trimmed = editValue.trim();
+                              if (trimmed) renameGroup(g.id, trimmed);
+                              setEditingGroupId(null);
+                            }}
+                          />
+                        ) : (
+                          <span className="truncate text-sm flex-1 min-w-0">
+                            {g.name}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          {g.tabIds.length}
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSplitDropdownGroupId(
+                            splitDropdownGroupId === g.id ? null : g.id,
+                          );
                         }}
+                        title={t("nav.splitViewTabs")}
                       >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Rename
-                      </button>
-                      <button
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
-                        onClick={() => {
-                          handleSaveSplitView();
-                          setSplitPillContextMenu(null);
-                        }}
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        Save Split View
-                      </button>
-                      <div className="border-t border-edge my-1" />
-                      <button
-                        className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
-                        onClick={() => {
-                          // Close every tab in the split group. Closing the
-                          // pill should tear down the whole split — not dump
-                          // the underlying terminals back into independent
-                          // tabs. removeTab prunes them from splitLayout as
-                          // each one goes.
-                          const ids = [...allSplitScreenTab];
-                          setSplitPillContextMenu(null);
-                          for (const id of ids) removeTab(id);
-                        }}
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        Close Split View
-                      </button>
+                        {splitDropdownGroupId === g.id ? (
+                          <ChevronUpIcon className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </Button>
                     </div>
-                  )}
-                </div>,
-              );
+                    {splitDropdownGroupId === g.id && (
+                      <div className="absolute top-[42px] left-0 z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[200px] max-h-[300px] overflow-y-auto">
+                        {g.tabIds.map((tid) => {
+                          const mt = tabs.find((x: TabData) => x.id === tid);
+                          if (!mt) return null;
+                          return (
+                            <div
+                              key={tid}
+                              className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                              onClick={() => {
+                                setCurrentTab(tid);
+                                setSplitDropdownGroupId(null);
+                              }}
+                            >
+                              <Terminal className="h-3.5 w-3.5 flex-shrink-0" />
+                              <span className="truncate flex-1 min-w-0">
+                                {mt.title}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeTab(tid);
+                                }}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {splitPillContextMenu?.groupId === g.id && (
+                      <div
+                        className="fixed z-[9999] bg-surface border border-edge rounded-md shadow-lg py-1 min-w-[140px]"
+                        style={{
+                          left: splitPillContextMenu.x,
+                          top: splitPillContextMenu.y,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-foreground hover:bg-hover cursor-pointer"
+                          onClick={() => {
+                            setEditValue(g.name);
+                            setEditingGroupId(g.id);
+                            setSplitPillContextMenu(null);
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Rename
+                        </button>
+                        <div className="border-t border-edge my-1" />
+                        <button
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-[13px] text-red-400 hover:bg-hover cursor-pointer"
+                          onClick={() => {
+                            // Tear down the whole multiview — close every pane.
+                            const ids = [...g.tabIds];
+                            setSplitPillContextMenu(null);
+                            for (const id of ids) removeTab(id);
+                          }}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Close Multiview
+                        </button>
+                      </div>
+                    )}
+                  </div>,
+                );
+              });
             }
 
             return elements;
@@ -1416,6 +1412,33 @@ export function TopNavbar({
           }}
         >
           <TabDropdown />
+          <Button
+            variant="outline"
+            onClick={() => {
+              const cur = tabs.find((x: TabData) => x.id === currentTab);
+              if (!cur) return;
+              const splittable = [
+                "terminal",
+                "server_stats",
+                "file_manager",
+                "tunnel",
+                "docker",
+              ].includes(cur.type);
+              if (!splittable) return;
+              const dupId = addTabAfter(currentTab, {
+                type: cur.type,
+                title: cur.title,
+                hostConfig: (cur as { hostConfig?: unknown }).hostConfig,
+                connectionConfig: (cur as { connectionConfig?: unknown })
+                  .connectionConfig,
+              });
+              if (dupId > 0) createGroup([currentTab, dupId]);
+            }}
+            className="w-[30px] h-[30px] border-edge"
+            title={t("nav.newMultiview", "New multiview")}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
           {splitGroupTabs.length >= 2 && !terminalsCondensed && (
             <Button
               variant="outline"
