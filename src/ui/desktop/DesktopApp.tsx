@@ -44,7 +44,7 @@ function AppContent({
   const [isTopbarOpenPersisted, setIsTopbarOpenPersisted] = useState<boolean>(
     () => {
       const saved = localStorage.getItem("topNavbarOpen");
-      return saved !== null ? JSON.parse(saved) : true;
+      return saved !== null ? JSON.parse(saved) : false;
     },
   );
   const [isTopbarHoverOpen, setIsTopbarHoverOpen] = useState<boolean>(false);
