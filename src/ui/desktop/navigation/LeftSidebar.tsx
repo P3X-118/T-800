@@ -92,7 +92,7 @@ export function LeftSidebar({
   const [isSidebarOpenPersisted, setIsSidebarOpenPersisted] = useState<boolean>(
     () => {
       const saved = localStorage.getItem("leftSidebarOpen");
-      return saved !== null ? JSON.parse(saved) : true;
+      return saved !== null ? JSON.parse(saved) : false;
     },
   );
   const [isSidebarHoverOpen, setIsSidebarHoverOpen] = useState<boolean>(false);
